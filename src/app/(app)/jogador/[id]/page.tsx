@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { lerJogador, lerRodadas } from "@/lib/db";
+import { lerSessao } from "@/lib/session";
 import { formatarData, STATS_ZERO } from "@/lib/domain";
 import { CardJogador } from "@/components/ui";
+import TrocarPin from "./TrocarPin";
 
 export const dynamic = "force-dynamic";
 
 export default async function PaginaJogador({ params }: { params: { id: string } }) {
   const p = await lerJogador(params.id);
   if (!p) notFound();
+
+  const sessao = lerSessao();
+  const souEu = !!sessao && sessao.tipo === "jogador" && sessao.playerId === p.id;
 
   const s = { ...STATS_ZERO, ...(p.stats || {}) };
   const media = s.jogos ? (s.gols / s.jogos).toFixed(2).replace(".", ",") : "0,00";
@@ -26,6 +31,7 @@ export default async function PaginaJogador({ params }: { params: { id: string }
           <h1>{p.nome}</h1>
         </div>
         <div className="grow" />
+        {souEu ? <TrocarPin /> : null}
         <Link className="btn sm ghost" href="/ranking">Voltar ao ranking</Link>
       </div>
 

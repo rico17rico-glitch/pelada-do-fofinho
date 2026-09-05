@@ -592,3 +592,27 @@ export async function excluirLancamento(id: string): Promise<Resposta> {
   atualizarTudo();
   return { ok: true, msg: "Lançamento apagado." };
 }
+
+/* =====================================================================
+   O jogador troca o próprio PIN
+   ===================================================================== */
+export async function trocarMeuPin(pinAtual: string, novoPin: string): Promise<Resposta> {
+  const s = lerSessao();
+  if (!s || s.tipo !== "jogador") {
+    return erro("Entre com o seu nome e PIN para trocar o PIN.");
+  }
+
+  const novo = String(novoPin || "").trim();
+  if (!/^\d{4}$/.test(novo)) return erro("O novo PIN precisa ter 4 números.");
+
+  const eu = await lerJogador(s.playerId);
+  if (!eu) return erro("Jogador não encontrado.");
+  if ((eu.pin || "").trim() !== String(pinAtual || "").trim()) return erro("O PIN atual está errado.");
+  if (novo === (eu.pin || "").trim()) return erro("O novo PIN é igual ao atual.");
+
+  const { error } = await db().from("players").update({ pin: novo }).eq("id", eu.id);
+  if (error) return erro(error.message);
+
+  atualizarTudo();
+  return { ok: true, msg: "PIN trocado. Use o novo da próxima vez que entrar." };
+}

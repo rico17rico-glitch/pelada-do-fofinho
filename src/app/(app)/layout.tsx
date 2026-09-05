@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { lerConfig, lerJogador } from "@/lib/db";
 import { ehAdmin, lerSessao } from "@/lib/session";
@@ -26,10 +27,15 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
             <span>Futsal · {cfg.regra_partida}</span>
           </div>
           <div className="grow" />
-          <div className="who">
-            <span className="dot" />
-            {admin ? "Mestre da pelada" : eu?.nome}
-          </div>
+          {admin ? (
+            <div className="who"><span className="dot" />Mestre da pelada</div>
+          ) : (
+            /* atalho para o próprio perfil, onde dá para trocar o PIN */
+            <Link className="who eu" href={`/jogador/${eu!.id}`}>
+              <span className="dot" />
+              {eu!.nome}
+            </Link>
+          )}
           <form action={sair}>
             <button
               className="btn sm ghost"

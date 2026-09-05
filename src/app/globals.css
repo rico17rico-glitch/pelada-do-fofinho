@@ -53,6 +53,8 @@ img{max-width:100%}
 .brandblock span{font-family:var(--f-data);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--brand-soft);font-weight:600}
 .who{display:flex;align-items:center;gap:8px;font-family:var(--f-data);font-size:13px;font-weight:600;letter-spacing:.04em}
 .who .dot{width:8px;height:8px;border-radius:50%;background:var(--brand)}
+.who.eu{text-decoration:none;border:1px solid rgba(255,251,232,.28);border-radius:999px;padding:4px 11px}
+.who.eu:hover{border-color:var(--brand);background:rgba(246,168,33,.12)}
 
 .tabsbar{background:var(--header-bg);position:sticky;top:0;z-index:20;box-shadow:0 6px 18px -14px rgba(0,0,0,.7)}
 .tabsbar .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
