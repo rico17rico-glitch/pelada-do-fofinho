@@ -16,7 +16,8 @@ import {
   reabrirJogo, registrarLanceCopa, registrarPenaltis, removerLanceCopa, renomearTimeCopa,
   sortearMataMata, zerarJogo,
 } from "@/lib/actions-copa";
-import { Confirmar, Modal, Swatch, Toast, useToast } from "@/components/ui";
+import { Avatar, Confirmar, Modal, Swatch, Toast, useToast } from "@/components/ui";
+import Chaveamento from "./Chaveamento";
 
 export default function Copa({
   copa, jogadores, cfg, meuId, organizador, podeApitar, agoraServidor,
@@ -107,7 +108,10 @@ export default function Copa({
             <strong>{timeCampeao.nome}</strong>
             <div className="row" style={{ justifyContent: "center", gap: 6 }}>
               {timeCampeao.jogadores.map((id) => (
-                <Link key={id} className="chip" href={`/jogador/${id}`}>{nomeDe(id)}</Link>
+                <Link key={id} className="chip com-foto" href={`/jogador/${id}`}>
+                  <Avatar nome={nomeDe(id)} url={porId(id)?.foto_url} tam={26} />
+                  {nomeDe(id)}
+                </Link>
               ))}
             </div>
           </div>
@@ -241,9 +245,11 @@ export default function Copa({
                     <ul className="copa-elenco">
                       {tm.jogadores.map((id) => (
                         <li key={id}>
+                          <Avatar nome={nomeDe(id)} url={porId(id)?.foto_url} tam={22} />
                           {tm.capitao === id ? <span className="cap">C</span> : null}
                           {nomeDe(id)}
-                          <span className="note"> {ovr(porId(id))}</span>
+                          <span className="grow" />
+                          <span className="note">{ovr(porId(id))}</span>
                         </li>
                       ))}
                     </ul>
@@ -332,6 +338,17 @@ export default function Copa({
                 </button>
               ) : null}
             </div>
+
+            <Chaveamento
+              semis={semis}
+              final={final}
+              times={times}
+              eliminadoNoGrupo={
+                faseDeGruposCompleta(copa) && tab.length >= 5
+                  ? timePorId(tab[tab.length - 1].id)
+                  : null
+              }
+            />
 
             <span className="eyebrow">Semifinais</span>
             {semis.map((j) => (

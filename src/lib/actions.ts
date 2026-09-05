@@ -616,3 +616,49 @@ export async function trocarMeuPin(pinAtual: string, novoPin: string): Promise<R
   atualizarTudo();
   return { ok: true, msg: "PIN trocado. Use o novo da próxima vez que entrar." };
 }
+
+/* =====================================================================
+   Foto do jogador
+   ===================================================================== */
+export async function salvarFoto(playerId: string, imagemBase64: string): Promise<Resposta & { url?: string }> {
+  const a = await ator();
+  const meu = a.jogador?.id === playerId;
+  if (!a.admin && !a.jogador?.organizador && !meu) {
+    return erro("Você só pode trocar a sua própria foto.");
+  }
+
+  const m = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(imagemBase64 || "");
+  if (!m) return erro("Formato de imagem não reconhecido. Use JPG, PNG ou WEBP.");
+
+  const bytes = Buffer.from(m[2], "base64");
+  if (bytes.length > 1_500_000) return erro("Imagem muito pesada. Tente uma menor.");
+
+  /* nome novo a cada envio para o navegador não servir a foto antiga do cache */
+  const caminho = `${playerId}/${Date.now()}.jpg`;
+  const up = await db().storage.from("fotos").upload(caminho, bytes, {
+    contentType: "image/jpeg",
+    upsert: true,
+  });
+  if (up.error) return erro("Não consegui guardar a foto: " + up.error.message);
+
+  const { data } = db().storage.from("fotos").getPublicUrl(caminho);
+  const url = data.publicUrl;
+
+  const { error } = await db().from("players").update({ foto_url: url }).eq("id", playerId);
+  if (error) return erro(error.message);
+
+  atualizarTudo();
+  return { ok: true, msg: "Foto atualizada.", url };
+}
+
+export async function removerFoto(playerId: string): Promise<Resposta> {
+  const a = await ator();
+  const meu = a.jogador?.id === playerId;
+  if (!a.admin && !a.jogador?.organizador && !meu) {
+    return erro("Você só pode tirar a sua própria foto.");
+  }
+  const { error } = await db().from("players").update({ foto_url: null }).eq("id", playerId);
+  if (error) return erro(error.message);
+  atualizarTudo();
+  return { ok: true, msg: "Foto removida." };
+}

@@ -347,7 +347,7 @@ footer.site{border-top:1px solid var(--line);padding:18px 0;color:var(--text-3);
 .copa-time.fora{opacity:.5}
 .copa-time.campeao{border-color:var(--brand);box-shadow:0 0 0 2px rgba(240,180,41,.35)}
 .copa-elenco{list-style:none;margin:0;padding:8px 12px;display:flex;flex-direction:column;gap:5px}
-.copa-elenco li{font-family:var(--f-data);font-weight:600;font-size:14px;display:flex;align-items:center;gap:2px}
+.copa-elenco li{font-family:var(--f-data);font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px}
 .selo-fora,.selo-campeao{position:absolute;top:44px;right:8px;font-family:var(--f-data);font-size:10.5px;font-weight:700;
   letter-spacing:.14em;text-transform:uppercase;padding:2px 7px;border-radius:5px}
 .selo-fora{background:var(--bad-bg);color:var(--bad)}
@@ -378,3 +378,45 @@ tr.zona-queda td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
 .taca-cont{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:24px;border-radius:7px;
   background:var(--surface-2);font-family:var(--f-display);font-size:15px}
 .taca-cont.topo{background:var(--brand);color:#20160A}
+
+/* ---------- foto do jogador ---------- */
+.avatar{border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  background:var(--surface-2);color:var(--text-3);font-family:var(--f-display);letter-spacing:.5px;
+  vertical-align:middle;overflow:hidden}
+.avatar.borda{box-shadow:0 0 0 2px var(--brand)}
+.avatar.vazio{border:1px solid var(--line)}
+.pcard .avatar{background:rgba(255,251,232,.12);color:var(--brand-soft);border-color:rgba(246,168,33,.4)}
+.chip.com-foto{padding-left:4px;gap:7px}
+.pod .avatar{margin-bottom:4px;box-shadow:0 0 0 2px rgba(255,255,255,.6)}
+
+/* ---------- chaveamento da Copa ---------- */
+.chave{display:grid;grid-template-columns:1.2fr 1.2fr .9fr;gap:14px;align-items:center;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.chave-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.chave-titulo{font-family:var(--f-data);font-size:11.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--text-3)}
+.chave-jogo{border:1px solid var(--line-strong);border-radius:11px;overflow:hidden;background:var(--surface)}
+.chave-jogo.final{border-color:var(--brand);box-shadow:0 0 0 2px rgba(240,180,41,.25)}
+.chave-lado{display:flex;align-items:center;gap:7px;padding:7px 10px;font-family:var(--f-data);font-weight:600;font-size:14px}
+.chave-lado + .chave-lado{border-top:1px solid var(--line)}
+.chave-lado.passa{background:var(--ok-bg);color:var(--ok);font-weight:700}
+.chave-lado.cai{opacity:.55}
+.chave-nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chave-gols{font-family:var(--f-display);font-size:17px;font-variant-numeric:tabular-nums;min-width:18px;text-align:right}
+.chave-pen{font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.chave-swatch{width:9px;height:22px;border-radius:3px;flex:none}
+.chave-vazio{border:1px dashed var(--line-strong);border-radius:11px;padding:14px 10px;text-align:center;
+  color:var(--text-3);font-family:var(--f-data);font-size:13px}
+.chave-taca{background:linear-gradient(150deg,#F0B429,#9A6606);color:#20160A;border-radius:11px;padding:14px 12px;
+  display:flex;align-items:center;gap:9px}
+.chave-taca strong{font-family:var(--f-display);font-size:19px;text-transform:uppercase;line-height:1.05}
+.chave-rodape{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding-top:12px;border-top:1px solid var(--line);
+  font-family:var(--f-data);font-weight:600;font-size:13.5px;color:var(--text-3)}
+/* as linhas que ligam as semis à final */
+.chave-col.liga{position:relative}
+.chave-col.liga::before{content:"";position:absolute;left:-14px;top:34px;bottom:6px;width:8px;
+  border-left:2px solid var(--line-strong);border-top:2px solid var(--line-strong);border-bottom:2px solid var(--line-strong);
+  border-radius:6px 0 0 6px}
+@media(max-width:760px){
+  .chave{grid-template-columns:1fr}
+  .chave-col.liga::before{display:none}
+}

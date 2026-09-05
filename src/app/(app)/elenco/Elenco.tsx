@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ATTRS, BASES, POSITIONS, POS_FULL, Player, Pos, ovr } from "@/lib/domain";
 import { criarElencoExemplo, excluirJogador, salvarJogador } from "@/lib/actions";
-import { Confirmar, Modal, Ovr, PosTag, Toast, useToast } from "@/components/ui";
+import { Avatar, Confirmar, Modal, Ovr, PosTag, Toast, useToast } from "@/components/ui";
 
 type Rascunho = {
   id?: string;
@@ -152,7 +152,10 @@ export default function Elenco({ jogadores, admin }: { jogadores: Player[]; admi
               {lista.map((p) => (
                 <tr key={p.id} style={p.ativo === false ? { opacity: 0.5 } : undefined}>
                   <td className="l">
-                    <Link className="chip" href={`/jogador/${p.id}`}>{p.nome}</Link>
+                    <Link className="chip com-foto" href={`/jogador/${p.id}`}>
+                      <Avatar nome={p.nome} url={p.foto_url} tam={24} />
+                      {p.nome}
+                    </Link>
                   </td>
                   <td className="l"><PosTag pos={p.pos} /></td>
                   <td className="l">

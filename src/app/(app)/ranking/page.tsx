@@ -2,7 +2,7 @@ import Link from "next/link";
 import { lerJogadores } from "@/lib/db";
 import { ehAdmin, lerSessao } from "@/lib/session";
 import { ovr, Player } from "@/lib/domain";
-import { Ovr, PosTag } from "@/components/ui";
+import { Avatar, Ovr, PosTag } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +56,7 @@ export default async function PaginaRanking({
       <div className="podium">
         {podio.map((p, i) => (
           <Link key={p.id} href={`/jogador/${p.id}`} className={"pod p" + (i + 1)}>
+            <Avatar nome={p.nome} url={p.foto_url} tam={46} borda />
             <span className="rk">{rotulos[i]}</span>
             <span className="nm">{p.nome}</span>
             <span className="mt">
@@ -87,7 +88,8 @@ export default async function PaginaRanking({
                 <tr key={p.id}>
                   <td className="l" style={{ color: "var(--text-3)" }}>{i + 1}</td>
                   <td className="l">
-                    <Link className="chip" href={`/jogador/${p.id}`}>
+                    <Link className="chip com-foto" href={`/jogador/${p.id}`}>
+                      <Avatar nome={p.nome} url={p.foto_url} tam={24} />
                       {p.nome}
                       {p.tipo === "avulso" ? <span className="cnum">avulso</span> : null}
                     </Link>

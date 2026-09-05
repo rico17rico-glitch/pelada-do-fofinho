@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { lerJogador, lerRodadas } from "@/lib/db";
-import { lerSessao } from "@/lib/session";
+import { ehAdmin, lerSessao } from "@/lib/session";
 import { formatarData, STATS_ZERO } from "@/lib/domain";
 import { CardJogador } from "@/components/ui";
 import TrocarPin from "./TrocarPin";
+import TrocarFoto from "./TrocarFoto";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,9 @@ export default async function PaginaJogador({ params }: { params: { id: string }
 
   const sessao = lerSessao();
   const souEu = !!sessao && sessao.tipo === "jogador" && sessao.playerId === p.id;
+  const admin = ehAdmin(sessao);
+  const eu = !admin && sessao && sessao.tipo === "jogador" ? await lerJogador(sessao.playerId) : null;
+  const podeTrocarFoto = souEu || admin || !!eu?.organizador;
 
   const s = { ...STATS_ZERO, ...(p.stats || {}) };
   const media = s.jogos ? (s.gols / s.jogos).toFixed(2).replace(".", ",") : "0,00";
@@ -31,6 +35,7 @@ export default async function PaginaJogador({ params }: { params: { id: string }
           <h1>{p.nome}</h1>
         </div>
         <div className="grow" />
+        {podeTrocarFoto ? <TrocarFoto playerId={p.id} temFoto={!!p.foto_url} /> : null}
         {souEu ? <TrocarPin /> : null}
         <Link className="btn sm ghost" href="/ranking">Voltar ao ranking</Link>
       </div>

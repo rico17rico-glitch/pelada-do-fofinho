@@ -1,7 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ovr, ovrTier, POS_LABEL, Pos, Player, ATTRS, POS_FULL } from "@/lib/domain";
+import { ovr, ovrTier, POS_LABEL, Pos, Player, ATTRS, POS_FULL, iniciais } from "@/lib/domain";
+
+/** Foto de rosto; sem foto, as iniciais. */
+export function Avatar({
+  nome, url, tam = 34, borda,
+}: { nome: string; url?: string | null; tam?: number; borda?: boolean }) {
+  const estilo = { width: tam, height: tam, fontSize: Math.round(tam / 2.6) };
+  if (url) {
+    /* eslint-disable-next-line @next/next/no-img-element */
+    return <img className={"avatar" + (borda ? " borda" : "")} style={estilo} src={url} alt={nome} />;
+  }
+  return (
+    <span className={"avatar vazio" + (borda ? " borda" : "")} style={estilo} aria-hidden="true">
+      {iniciais(nome)}
+    </span>
+  );
+}
 
 export function Ovr({ v }: { v: number }) {
   return <span className={"ovr " + ovrTier(v)}>{v}</span>;
@@ -101,6 +117,7 @@ export function CardJogador({ p }: { p: Player }) {
           <div className="big">{ovr(p)}</div>
           <div className="biglabel">OVERALL</div>
         </div>
+        <Avatar nome={p.nome} url={p.foto_url} tam={72} borda />
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2>{p.nome}</h2>
           <div className="sub">

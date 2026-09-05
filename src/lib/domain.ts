@@ -67,6 +67,8 @@ export type Player = {
   ativo: boolean;
   /** Organizador manda na rodada igual ao mestre: cria, sorteia, apita e fecha. */
   organizador?: boolean;
+  /** Foto de rosto, quadrada, guardada no Supabase. */
+  foto_url?: string | null;
   pin: string;
   atr_fin: number; atr_vis: number; atr_def: number; atr_int: number;
   moedas: number;
@@ -465,6 +467,14 @@ export function formatarData(iso: string): string {
 export function hojeISO(): string {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+/** Iniciais para quando o jogador ainda não tem foto. */
+export function iniciais(nome: string): string {
+  const partes = (nome || "").trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return "?";
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
 }
 
 export function gerarPin(): string {
