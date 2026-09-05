@@ -42,7 +42,16 @@ export type Config = {
   qtd_times: number;
   regra_partida: string;
   nome_pelada: string;
+  duracao_min: number;
+  gols_limite: number;
 };
+
+/** Texto curto da regra, montado a partir dos números. */
+export function textoRegra(cfg: Pick<Config, "duracao_min" | "gols_limite">): string {
+  const min = `${cfg.duracao_min} ${cfg.duracao_min === 1 ? "minuto" : "minutos"}`;
+  if (!cfg.gols_limite) return min;
+  return `${min} ou ${cfg.gols_limite} ${cfg.gols_limite === 1 ? "gol" : "gols"}`;
+}
 
 export type Stats = {
   rodadas: number; jogos: number; v: number; e: number; d: number;
@@ -64,8 +73,38 @@ export type Player = {
 };
 
 export type Slot = { pos: Pos; playerId: string | null };
-export type Team = { id: string; nome: string; cls: string; hex: string; slots: Slot[] };
-export type Match = { a: string; b: string; ga: number; gb: number };
+export type Team = {
+  id: string; nome: string; cls: string; hex: string; slots: Slot[];
+  /** Todo time tem um capitão; o mestre escolhe depois do sorteio. */
+  capitao?: string | null;
+};
+
+/** Um lance da partida. `playerId` nulo é gol sem autor anotado. */
+export type Evento = {
+  id: string;
+  t: "gol" | "assist";
+  teamId: string;
+  playerId: string | null;
+  seg: number;
+};
+
+export type StatusPartida = "pendente" | "andamento" | "encerrada";
+
+export type Match = {
+  a: string;
+  b: string;
+  /** Placar de rodadas antigas, antes dos lances por partida. */
+  ga?: number;
+  gb?: number;
+  eventos?: Evento[];
+  status?: StatusPartida;
+  duracaoSeg?: number;
+  /** Segundos já corridos nas partes anteriores do cronômetro. */
+  acumuladoSeg?: number;
+  rodando?: boolean;
+  /** Momento em que o cronômetro voltou a correr (ISO). */
+  iniciadoEm?: string | null;
+};
 export type Premio = {
   moedas: number; rodadas: number; jogos: number;
   v: number; e: number; d: number; gols: number; assist: number; titulos: number;
@@ -118,6 +157,46 @@ export type LinhaTabela = {
   gp: number; gc: number; pts: number;
 };
 
+/** Placar de um lado da partida: conta os gols lançados, ou usa o número antigo. */
+export function placar(m: Match, lado: "a" | "b"): number {
+  if (m.eventos) {
+    const teamId = lado === "a" ? m.a : m.b;
+    return m.eventos.filter((e) => e.t === "gol" && e.teamId === teamId).length;
+  }
+  return (lado === "a" ? m.ga : m.gb) || 0;
+}
+
+/** Segundos já jogados, somando o trecho que está correndo agora. */
+export function decorridoSeg(m: Match, agoraMs: number): number {
+  const base = m.acumuladoSeg || 0;
+  if (m.rodando && m.iniciadoEm) {
+    return base + Math.max(0, (agoraMs - Date.parse(m.iniciadoEm)) / 1000);
+  }
+  return base;
+}
+
+export function formatarRelogio(seg: number): string {
+  const s = Math.max(0, Math.floor(seg));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Gols e assistências da rodada, somando os lances de todas as partidas. */
+export function statsDaRodada(round: Pick<Round, "matches" | "stats">): Record<string, { g: number; a: number }> {
+  const out: Record<string, { g: number; a: number }> = {};
+  let temLances = false;
+  (round.matches || []).forEach((m) => {
+    (m.eventos || []).forEach((e) => {
+      temLances = true;
+      if (!e.playerId) return;
+      out[e.playerId] = out[e.playerId] || { g: 0, a: 0 };
+      if (e.t === "gol") out[e.playerId].g++;
+      else out[e.playerId].a++;
+    });
+  });
+  /* Rodadas antigas guardavam os números soltos, fora das partidas. */
+  return temLances ? out : (round.stats || {});
+}
+
 export function tabelaRodada(round: Pick<Round, "teams" | "matches">): LinhaTabela[] {
   const t: Record<string, LinhaTabela> = {};
   (round.teams || []).forEach((tm) => {
@@ -126,10 +205,11 @@ export function tabelaRodada(round: Pick<Round, "teams" | "matches">): LinhaTabe
   (round.matches || []).forEach((m) => {
     const A = t[m.a], B = t[m.b];
     if (!A || !B) return;
+    const ga = placar(m, "a"), gb = placar(m, "b");
     A.j++; B.j++;
-    A.gp += m.ga; A.gc += m.gb; B.gp += m.gb; B.gc += m.ga;
-    if (m.ga > m.gb) { A.v++; B.d++; A.pts += 3; }
-    else if (m.gb > m.ga) { B.v++; A.d++; B.pts += 3; }
+    A.gp += ga; A.gc += gb; B.gp += gb; B.gc += ga;
+    if (ga > gb) { A.v++; B.d++; A.pts += 3; }
+    else if (gb > ga) { B.v++; A.d++; B.pts += 3; }
     else { A.e++; B.e++; A.pts++; B.pts++; }
   });
   return Object.values(t).sort(
@@ -146,13 +226,14 @@ export function calcularPremiacao(round: Round, cfg: Config): { campeao: string 
   const porTime: Record<string, LinhaTabela> = Object.fromEntries(tab.map((r) => [r.id, r]));
   const campeao = round.campeao || (tab[0] ? tab[0].id : null);
   const premios: Record<string, Premio> = {};
+  const stats = statsDaRodada(round);
 
   (round.teams || []).forEach((tm) => {
     const r = porTime[tm.id] || { j: 0, v: 0, e: 0, d: 0 } as LinhaTabela;
     const venceu = tm.id === campeao;
     (tm.slots || []).forEach((s) => {
       if (!s.playerId) return;
-      const st = (round.stats || {})[s.playerId] || { g: 0, a: 0 };
+      const st = stats[s.playerId] || { g: 0, a: 0 };
       premios[s.playerId] = {
         moedas: (venceu ? cfg.pontos_vitoria : 0) + st.g * cfg.pontos_gol + st.a * cfg.pontos_assist,
         rodadas: 1, jogos: r.j, v: r.v, e: r.e, d: r.d,
@@ -180,6 +261,7 @@ export function sortearTimes(pool: Player[], nTimes: number): { times: Team[]; r
     times.push({
       id: "T" + (i + 1),
       nome: st.nome, cls: st.cls, hex: st.hex,
+      capitao: null,
       slots: FORMATION.map((p) => ({ pos: p, playerId: null })),
     });
   }
@@ -266,7 +348,20 @@ export function trocarNaEscalacao(round: Round, k1: string, k2: string): Round {
     round.reservas = (round.reservas || []).filter((x) => x !== bancoId);
     if (saindo) round.reservas.push(saindo);
   }
+  /* Capitão que saiu do time perde a braçadeira. */
+  round.teams.forEach((tm) => {
+    if (tm.capitao && !tm.slots.some((s) => s.playerId === tm.capitao)) tm.capitao = null;
+  });
   return round;
+}
+
+/** Times que ainda estão sem capitão. */
+export function timesSemCapitao(round: Pick<Round, "teams">): Team[] {
+  return (round.teams || []).filter((tm) => !tm.capitao);
+}
+
+export function idCurto(prefixo: string): string {
+  return prefixo + Math.random().toString(36).slice(2, 9);
 }
 
 /* Estatísticas zeradas, usadas ao criar jogador e ao estornar rodada. */

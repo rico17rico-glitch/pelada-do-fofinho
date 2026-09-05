@@ -2,22 +2,28 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import {
-  Config, POS_LABEL, Player, Round, formatarData, ovr, tabelaRodada,
+  Config, Evento, Match, POS_LABEL, Player, Round, Team,
+  decorridoSeg, formatarRelogio, formatarData, ovr, placar, statsDaRodada, tabelaRodada, timesSemCapitao,
 } from "@/lib/domain";
 import {
-  adicionarConfronto, ajustarEstatistica, ajustarPlacar, alternarPresenca, finalizarRodada,
-  limparTimes, reabrirRodada, removerConfronto, salvarJogador, sortear, trocarJogadores,
+  adicionarConfronto, alternarPresenca, definirCapitao, encerrarPartida, finalizarRodada,
+  iniciarPartida, limparTimes, pausarPartida, reabrirPartida, reabrirRodada, registrarLance,
+  removerConfronto, removerLance, renomearTime, salvarJogador, sortear, trocarJogadores,
+  zerarCronometro,
 } from "@/lib/actions";
-import { Confirmar, Modal, Quadra, SLOT_XY, Stepper, Swatch, Toast, useToast } from "@/components/ui";
+import { Confirmar, Modal, Quadra, SLOT_XY, Swatch, Toast, useToast } from "@/components/ui";
 
 export default function Rodada({
-  rodada, jogadores, cfg, admin,
-}: { rodada: Round; jogadores: Player[]; cfg: Config; admin: boolean }) {
+  rodada, jogadores, cfg, admin, agoraServidor,
+}: {
+  rodada: Round; jogadores: Player[]; cfg: Config; admin: boolean; agoraServidor: string;
+}) {
   const router = useRouter();
-  const [pendente, iniciar] = useTransition();
   const { msg, avisar } = useToast();
+
+  const [pendente, setPendente] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [qtdTimes, setQtdTimes] = useState(rodada.teams?.length || cfg.qtd_times || 3);
   const [campeaoManual, setCampeaoManual] = useState<string>(rodada.campeao || "");
@@ -27,21 +33,49 @@ export default function Rodada({
   const [baseAvulso, setBaseAvulso] = useState(65);
   const [timeA, setTimeA] = useState("");
   const [timeB, setTimeB] = useState("");
+  const [renomeando, setRenomeando] = useState<string | null>(null);
+  const [nomeNovo, setNomeNovo] = useState("");
 
   const aberta = rodada.status !== "finalizada";
   const podeEditar = admin && aberta;
-  const porId = (id: string | null) => jogadores.find((p) => p.id === id) || null;
   const times = rodada.teams || [];
+  const partidas = rodada.matches || [];
+  const porId = (id: string | null) => jogadores.find((p) => p.id === id) || null;
   const tabela = tabelaRodada(rodada);
+  const semCapitao = timesSemCapitao(rodada);
+  const totais = statsDaRodada(rodada);
 
-  /* roda uma ação e recarrega os dados do servidor */
-  function rodar(fn: () => Promise<{ ok: boolean; erro?: string; msg?: string }>, sucesso?: string) {
-    iniciar(async () => {
+  /* ---- relógio: o servidor manda a hora dele para o navegador se alinhar ---- */
+  const [offset] = useState(() => Date.now() - Date.parse(agoraServidor));
+  const [, setTick] = useState(0);
+  const algumaRodando = partidas.some((m) => m.rodando);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+  /* com o cronômetro correndo, busca o estado do servidor de tempos em tempos
+     para que outro aparelho veja o play/pausa de quem está apitando */
+  useEffect(() => {
+    if (!algumaRodando) return;
+    const id = setInterval(() => router.refresh(), 10000);
+    return () => clearInterval(id);
+  }, [algumaRodando, router]);
+  const agora = Date.now() - offset;
+
+  const emAndamento = partidas.findIndex((m) => m.status === "andamento");
+  const [abertaIdx, setAbertaIdx] = useState<number | null>(emAndamento >= 0 ? emAndamento : null);
+
+  async function rodar(fn: () => Promise<{ ok: boolean; erro?: string; msg?: string }>, sucesso?: string) {
+    setPendente(true);
+    try {
       const r = await fn();
-      if (!r.ok) return avisar(r.erro || "Não deu certo.");
+      if (!r.ok) { avisar(r.erro || "Não deu certo."); return false; }
       router.refresh();
       if (sucesso || r.msg) avisar(sucesso || r.msg!);
-    });
+      return true;
+    } finally {
+      setPendente(false);
+    }
   }
 
   function clicarSlot(chave: string) {
@@ -56,12 +90,10 @@ export default function Rodada({
   function criarAvulso() {
     const nome = nomeAvulso.trim();
     if (!nome) return avisar("Coloque o nome do avulso.");
-    iniciar(async () => {
-      const r = await salvarJogador({ nome, pos: "ALA", alt: [], tipo: "avulso", base: baseAvulso });
-      if (!r.ok) return avisar(r.erro || "Não deu para cadastrar.");
+    rodar(() => salvarJogador({ nome, pos: "ALA", alt: [], tipo: "avulso", base: baseAvulso })).then((ok) => {
+      if (!ok) return;
       setNovoAvulso(false);
       setNomeAvulso("");
-      router.refresh();
       avisar(`${nome} entrou na lista. Marque-o como presente para incluir no sorteio.`);
     });
   }
@@ -89,21 +121,18 @@ export default function Rodada({
               {jogadores
                 .filter((p) => p.ativo !== false)
                 .sort((a, b) => a.nome.localeCompare(b.nome))
-                .map((p) => {
-                  const marcado = (rodada.present || []).includes(p.id);
-                  return (
-                    <button
-                      key={p.id}
-                      className="chip"
-                      aria-pressed={marcado}
-                      disabled={!podeEditar || pendente}
-                      onClick={() => rodar(() => alternarPresenca(rodada.id, p.id))}
-                    >
-                      {p.nome}
-                      <span className="cnum">{ovr(p)}</span>
-                    </button>
-                  );
-                })}
+                .map((p) => (
+                  <button
+                    key={p.id}
+                    className="chip"
+                    aria-pressed={(rodada.present || []).includes(p.id)}
+                    disabled={!podeEditar || pendente}
+                    onClick={() => rodar(() => alternarPresenca(rodada.id, p.id))}
+                  >
+                    {p.nome}
+                    <span className="cnum">{ovr(p)}</span>
+                  </button>
+                ))}
             </div>
             {podeEditar ? (
               <div className="row">
@@ -118,10 +147,7 @@ export default function Rodada({
         {!times.length ? (
           <div className="card empty">
             <h3>Times ainda não sorteados</h3>
-            <p>
-              Marque os presentes e sorteie. O sorteio respeita as posições do futsal e equilibra a
-              força dos times.
-            </p>
+            <p>Marque os presentes e sorteie. O sorteio respeita as posições do futsal e equilibra a força dos times.</p>
             {podeEditar ? (
               <div className="row" style={{ justifyContent: "center", marginTop: 12 }}>
                 <label className="field" style={{ textAlign: "left" }}>
@@ -131,10 +157,8 @@ export default function Rodada({
                   </select>
                 </label>
                 <button
-                  className="btn primary"
-                  style={{ alignSelf: "flex-end" }}
-                  disabled={pendente}
-                  onClick={() => rodar(() => sortear(rodada.id, qtdTimes), "Times sorteados!")}
+                  className="btn primary" style={{ alignSelf: "flex-end" }} disabled={pendente}
+                  onClick={() => rodar(() => sortear(rodada.id, qtdTimes), "Times sorteados! Agora escolha os capitães.")}
                 >
                   Sortear times
                 </button>
@@ -148,58 +172,118 @@ export default function Rodada({
               {podeEditar ? (
                 <>
                   <button
-                    className="btn sm"
-                    disabled={pendente}
-                    onClick={() => rodar(() => sortear(rodada.id, qtdTimes), "Times sorteados!")}
+                    className="btn sm" disabled={pendente}
+                    onClick={() => rodar(() => sortear(rodada.id, qtdTimes), "Times sorteados de novo.")}
                   >
                     Sortear de novo
                   </button>
-                  <button className="btn sm ghost danger" onClick={() => setConfirmando("limpar")}>
-                    Limpar
-                  </button>
+                  <button className="btn sm ghost danger" onClick={() => setConfirmando("limpar")}>Limpar</button>
                 </>
               ) : null}
             </div>
+
+            {podeEditar && semCapitao.length ? (
+              <div className="aviso">
+                {semCapitao.length === 1
+                  ? `${semCapitao[0].nome} está sem capitão.`
+                  : `${semCapitao.length} times estão sem capitão.`}{" "}
+                Escolha um em cada time abaixo — a rodada só fecha com todos definidos.
+              </div>
+            ) : null}
+
             {podeEditar ? (
-              <p className="note">
-                Toque em um jogador e depois em outro para trocá-los de lugar — inclusive com quem está no banco.
-              </p>
+              <p className="note">Toque em um jogador e depois em outro para trocá-los de lugar — inclusive com quem está no banco.</p>
             ) : null}
 
             <div className="teams">
               {times.map((tm) => {
+                const escalados = tm.slots.filter((s) => s.playerId);
                 const soma = tm.slots.reduce((s, x) => s + ovr(porId(x.playerId)), 0);
-                const n = tm.slots.filter((x) => x.playerId).length || 1;
                 return (
                   <div className="team" key={tm.id}>
                     <div className={"team-head " + tm.cls}>
-                      <b>{tm.nome}</b>
-                      <span className="avg">MÉDIA {Math.round(soma / n)}</span>
+                      {renomeando === tm.id ? (
+                        <input
+                          value={nomeNovo}
+                          autoFocus
+                          maxLength={40}
+                          onChange={(e) => setNomeNovo(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              rodar(() => renomearTime(rodada.id, tm.id, nomeNovo), "Nome do time salvo.");
+                              setRenomeando(null);
+                            }
+                            if (e.key === "Escape") setRenomeando(null);
+                          }}
+                          onBlur={() => setRenomeando(null)}
+                          style={{ padding: "3px 7px", fontFamily: "var(--f-data)", fontWeight: 700 }}
+                        />
+                      ) : (
+                        <b>{tm.nome}</b>
+                      )}
+                      <span className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                        <span className="avg">MÉDIA {Math.round(soma / (escalados.length || 1))}</span>
+                        {podeEditar && renomeando !== tm.id ? (
+                          <button
+                            className="btn-icone"
+                            title="Mudar o nome do time"
+                            onClick={() => { setNomeNovo(tm.nome); setRenomeando(tm.id); }}
+                          >
+                            ✎
+                          </button>
+                        ) : null}
+                      </span>
                     </div>
+
                     <div className="court">
                       <Quadra />
                       {tm.slots.map((s, i) => {
                         const p = porId(s.playerId);
                         const [x, y] = SLOT_XY[i] || [50, 50];
                         const chave = tm.id + ":" + i;
+                        const ehCapitao = !!p && tm.capitao === p.id;
                         return (
                           <div
                             key={chave}
                             className={"slot" + (p ? "" : " free") + (sel === chave ? " sel" : "")}
                             style={{ left: x + "%", top: y + "%" }}
                           >
-                            <button
-                              className="slotinner"
-                              disabled={!podeEditar}
-                              onClick={() => clicarSlot(chave)}
-                            >
+                            <button className="slotinner" disabled={!podeEditar} onClick={() => clicarSlot(chave)}>
                               <span className="p">{POS_LABEL[s.pos]}</span>
-                              <span className="n">{p ? p.nome : "vazio"}</span>
+                              <span className="n">
+                                {ehCapitao ? <span className="cap">C</span> : null}
+                                {p ? p.nome : "vazio"}
+                              </span>
                               {p ? <span className="o">{ovr(p)}</span> : null}
                             </button>
                           </div>
                         );
                       })}
+                    </div>
+
+                    <div className="capitania">
+                      <span className="eyebrow">Capitão</span>
+                      <div className="row" style={{ gap: 5 }}>
+                        {escalados.map((s) => {
+                          const p = porId(s.playerId)!;
+                          return (
+                            <button
+                              key={p.id}
+                              className="chip sm"
+                              aria-pressed={tm.capitao === p.id}
+                              disabled={!podeEditar || pendente}
+                              onClick={() =>
+                                rodar(
+                                  () => definirCapitao(rodada.id, tm.id, tm.capitao === p.id ? null : p.id),
+                                  tm.capitao === p.id ? "Braçadeira removida." : `${p.nome} é o capitão.`
+                                )
+                              }
+                            >
+                              {p.nome}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 );
@@ -242,44 +326,18 @@ export default function Rodada({
               </span>
             </div>
 
-            {(rodada.matches || []).length ? (
-              <div>
-                {rodada.matches.map((m, i) => {
-                  const A = times.find((t) => t.id === m.a);
-                  const B = times.find((t) => t.id === m.b);
-                  return (
-                    <div className="matchrow" key={i}>
-                      <span className={"mteam" + (m.ga > m.gb ? " win" : "")} style={{ flex: 1, textAlign: "right" }}>
-                        <Swatch hex={A?.hex || "#888"} />
-                        {A?.nome || "?"}
-                      </span>
-                      <Stepper
-                        valor={m.ga}
-                        desabilitado={!podeEditar}
-                        onMudar={(d) => rodar(() => ajustarPlacar(rodada.id, i, "ga", d))}
-                      />
-                      <span style={{ color: "var(--text-3)" }}>×</span>
-                      <Stepper
-                        valor={m.gb}
-                        desabilitado={!podeEditar}
-                        onMudar={(d) => rodar(() => ajustarPlacar(rodada.id, i, "gb", d))}
-                      />
-                      <span className={"mteam" + (m.gb > m.ga ? " win" : "")} style={{ flex: 1 }}>
-                        <Swatch hex={B?.hex || "#888"} />
-                        {B?.nome || "?"}
-                      </span>
-                      {podeEditar ? (
-                        <button
-                          className="btn sm ghost danger"
-                          aria-label="Remover confronto"
-                          onClick={() => rodar(() => removerConfronto(rodada.id, i))}
-                        >
-                          ×
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
+            {partidas.length ? (
+              <div className="stack" style={{ gap: 10 }}>
+                {partidas.map((m, i) => (
+                  <Partida
+                    key={i}
+                    m={m}
+                    indice={i}
+                    aberto={abertaIdx === i}
+                    onAbrir={() => setAbertaIdx(abertaIdx === i ? null : i)}
+                    {...{ rodada, times, cfg, podeEditar, pendente, agora, porId, rodar, avisar, setAbertaIdx }}
+                  />
+                ))}
               </div>
             ) : (
               <p className="note">Nenhum confronto lançado ainda.</p>
@@ -287,32 +345,19 @@ export default function Rodada({
 
             {podeEditar ? (
               <div className="row">
-                <select
-                  style={{ width: "auto" }}
-                  value={timeA || times[0]?.id || ""}
-                  onChange={(e) => setTimeA(e.target.value)}
-                >
+                <select style={{ width: "auto" }} value={timeA || times[0]?.id || ""} onChange={(e) => setTimeA(e.target.value)}>
                   {times.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
                 </select>
                 <span className="note">×</span>
-                <select
-                  style={{ width: "auto" }}
-                  value={timeB || times[1]?.id || ""}
-                  onChange={(e) => setTimeB(e.target.value)}
-                >
+                <select style={{ width: "auto" }} value={timeB || times[1]?.id || ""} onChange={(e) => setTimeB(e.target.value)}>
                   {times.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
                 </select>
                 <button
                   className="btn sm primary"
                   disabled={pendente}
                   onClick={() =>
-                    rodar(() =>
-                      adicionarConfronto(
-                        rodada.id,
-                        timeA || times[0]?.id,
-                        timeB || times[1]?.id
-                      )
-                    )
+                    rodar(() => adicionarConfronto(rodada.id, timeA || times[0]?.id, timeB || times[1]?.id))
+                      .then((ok) => { if (ok) setAbertaIdx(partidas.length); })
                   }
                 >
                   Adicionar confronto
@@ -322,10 +367,10 @@ export default function Rodada({
           </div>
         ) : null}
 
-        {/* ---------------- gols e assistências ---------------- */}
+        {/* ---------------- somatório da rodada ---------------- */}
         {times.length ? (
           <div className="card pad stack">
-            <div className="sect-title">Gols e assistências</div>
+            <div className="sect-title">Gols e assistências do dia</div>
             <div className="tablewrap">
               <table style={{ minWidth: 480 }}>
                 <thead>
@@ -339,46 +384,32 @@ export default function Rodada({
                 </thead>
                 <tbody>
                   {times.flatMap((tm) =>
-                    tm.slots
-                      .filter((s) => s.playerId)
-                      .map((s) => {
-                        const p = porId(s.playerId);
-                        if (!p) return null;
-                        const st = (rodada.stats || {})[p.id] || { g: 0, a: 0 };
-                        const previsto =
-                          st.g * cfg.pontos_gol +
-                          st.a * cfg.pontos_assist +
-                          (rodada.campeao === tm.id ? cfg.pontos_vitoria : 0);
-                        const ganho = aberta ? previsto : (rodada.premios || {})[p.id]?.moedas ?? 0;
-                        return (
-                          <tr key={p.id}>
-                            <td className="l">{p.nome}</td>
-                            <td className="l">
-                              <Swatch hex={tm.hex} />
-                              <span className="note">{tm.nome}</span>
-                            </td>
-                            <td>
-                              <Stepper
-                                valor={st.g}
-                                desabilitado={!podeEditar}
-                                onMudar={(d) => rodar(() => ajustarEstatistica(rodada.id, p.id, "g", d))}
-                              />
-                            </td>
-                            <td>
-                              <Stepper
-                                valor={st.a}
-                                desabilitado={!podeEditar}
-                                onMudar={(d) => rodar(() => ajustarEstatistica(rodada.id, p.id, "a", d))}
-                              />
-                            </td>
-                            <td className="coins">{ganho}</td>
-                          </tr>
-                        );
-                      })
+                    tm.slots.filter((s) => s.playerId).map((s) => {
+                      const p = porId(s.playerId);
+                      if (!p) return null;
+                      const st = totais[p.id] || { g: 0, a: 0 };
+                      const previsto =
+                        st.g * cfg.pontos_gol + st.a * cfg.pontos_assist +
+                        (rodada.campeao === tm.id ? cfg.pontos_vitoria : 0);
+                      const ganho = aberta ? previsto : (rodada.premios || {})[p.id]?.moedas ?? 0;
+                      return (
+                        <tr key={p.id}>
+                          <td className="l">
+                            {tm.capitao === p.id ? <span className="cap">C</span> : null}
+                            {p.nome}
+                          </td>
+                          <td className="l"><Swatch hex={tm.hex} /><span className="note">{tm.nome}</span></td>
+                          <td>{st.g}</td>
+                          <td>{st.a}</td>
+                          <td className="coins">{ganho}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
             </div>
+            <p className="note">Os números vêm dos lances marcados em cada partida.</p>
           </div>
         ) : null}
 
@@ -389,10 +420,7 @@ export default function Rodada({
             <div className="tablewrap">
               <table style={{ minWidth: 420 }}>
                 <thead>
-                  <tr>
-                    <th className="l">Time</th>
-                    <th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th>
-                  </tr>
+                  <tr><th className="l">Time</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th></tr>
                 </thead>
                 <tbody>
                   {tabela.map((t, i) => (
@@ -428,10 +456,7 @@ export default function Rodada({
                     style={{ alignSelf: "flex-end" }}
                     disabled={pendente}
                     onClick={() =>
-                      rodar(
-                        () => finalizarRodada(rodada.id, campeaoManual || null),
-                        "Rodada fechada. Pontos distribuídos!"
-                      )
+                      rodar(() => finalizarRodada(rodada.id, campeaoManual || null), "Rodada fechada. Pontos distribuídos!")
                     }
                   >
                     Fechar rodada e distribuir pontos
@@ -440,9 +465,7 @@ export default function Rodada({
               ) : (
                 <div className="row">
                   <span className="pill ok">Pontos distribuídos</span>
-                  <button className="btn sm ghost danger" onClick={() => setConfirmando("reabrir")}>
-                    Reabrir rodada
-                  </button>
+                  <button className="btn sm ghost danger" onClick={() => setConfirmando("reabrir")}>Reabrir rodada</button>
                 </div>
               )
             ) : null}
@@ -470,21 +493,13 @@ export default function Rodada({
             <span>Nota base</span>
             <div className="row">
               {[60, 65, 70, 75, 80].map((b) => (
-                <button
-                  key={b}
-                  type="button"
-                  className="chip"
-                  aria-pressed={baseAvulso === b}
-                  onClick={() => setBaseAvulso(b)}
-                >
+                <button key={b} type="button" className="chip" aria-pressed={baseAvulso === b} onClick={() => setBaseAvulso(b)}>
                   {b}
                 </button>
               ))}
             </div>
           </div>
-          <p className="note">
-            Ele entra no elenco como avulso: joga, marca gol e pontua, mas não recebe PIN de login.
-          </p>
+          <p className="note">Ele entra no elenco como avulso: joga, marca gol e pontua, mas não recebe PIN de login.</p>
         </Modal>
       ) : null}
 
@@ -501,7 +516,7 @@ export default function Rodada({
       {confirmando === "limpar" ? (
         <Confirmar
           titulo="Limpar os times?"
-          texto="Os times, os confrontos e os gols lançados nesta rodada são apagados. A lista de presença continua como está."
+          texto="Os times, os capitães, os confrontos e os lances desta rodada são apagados. A lista de presença continua como está."
           labelOk="Limpar tudo"
           onOk={() => { setConfirmando(null); rodar(() => limparTimes(rodada.id), "Times limpos."); }}
           onCancelar={() => setConfirmando(null)}
@@ -510,5 +525,214 @@ export default function Rodada({
 
       <Toast msg={msg} />
     </>
+  );
+}
+
+/* =====================================================================
+   Uma partida: cabeçalho sempre visível, painel ao vivo quando aberto
+   ===================================================================== */
+function Partida({
+  m, indice, aberto, onAbrir, rodada, times, cfg, podeEditar, pendente, agora, porId, rodar, setAbertaIdx,
+}: {
+  m: Match; indice: number; aberto: boolean; onAbrir: () => void;
+  rodada: Round; times: Team[]; cfg: Config; podeEditar: boolean; pendente: boolean;
+  agora: number; porId: (id: string | null) => Player | null;
+  rodar: (fn: () => Promise<any>, sucesso?: string) => Promise<boolean>;
+  avisar: (s: string) => void;
+  setAbertaIdx: (n: number | null) => void;
+}) {
+  const A = times.find((t) => t.id === m.a);
+  const B = times.find((t) => t.id === m.b);
+  const ga = placar(m, "a");
+  const gb = placar(m, "b");
+  const status = m.status || "encerrada";
+  const duracao = m.duracaoSeg || (cfg.duracao_min || 7) * 60;
+  const decorrido = decorridoSeg(m, agora);
+  const restante = duracao - decorrido;
+  const acabouTempo = restante <= 0;
+  const bateuGols = !!cfg.gols_limite && Math.max(ga, gb) >= cfg.gols_limite;
+
+  const rotulo =
+    status === "andamento" ? (m.rodando ? "Ao vivo" : "Pausada")
+      : status === "pendente" ? "A começar"
+      : "Encerrada";
+  const classePill = status === "andamento" ? (m.rodando ? "bad" : "warn") : status === "pendente" ? "mute" : "ok";
+
+  return (
+    <div className={"partida" + (status === "andamento" ? " viva" : "")}>
+      <button className="partida-cab" onClick={onAbrir}>
+        <span className={"mteam" + (ga > gb ? " win" : "")} style={{ flex: 1, textAlign: "right" }}>
+          <Swatch hex={A?.hex || "#888"} />{A?.nome || "?"}
+        </span>
+        <span className="placar-mini">{ga}</span>
+        <span style={{ color: "var(--text-3)" }}>×</span>
+        <span className="placar-mini">{gb}</span>
+        <span className={"mteam" + (gb > ga ? " win" : "")} style={{ flex: 1 }}>
+          <Swatch hex={B?.hex || "#888"} />{B?.nome || "?"}
+        </span>
+        <span className={"pill " + classePill}>
+          {status === "andamento" && m.rodando ? <span className="ponto-vivo" /> : null}
+          {rotulo}
+        </span>
+        <span className="note" aria-hidden="true">{aberto ? "▾" : "▸"}</span>
+      </button>
+
+      {aberto ? (
+        <div className="partida-painel">
+          {/* relógio e placar */}
+          <div className="placar-linha">
+            <div className="lado">
+              <span className="lado-nome">{A?.nome}</span>
+              <span className="lado-gols">{ga}</span>
+            </div>
+            <div className="relogio-bloco">
+              <div className={"relogio" + (acabouTempo ? " estourado" : m.rodando ? " correndo" : "")}>
+                {formatarRelogio(Math.max(0, restante))}
+              </div>
+              <span className="note">de {formatarRelogio(duracao)}</span>
+            </div>
+            <div className="lado">
+              <span className="lado-nome">{B?.nome}</span>
+              <span className="lado-gols">{gb}</span>
+            </div>
+          </div>
+
+          {(acabouTempo || bateuGols) && status === "andamento" ? (
+            <div className="aviso">
+              {acabouTempo && bateuGols
+                ? "Tempo esgotado e limite de gols atingido."
+                : acabouTempo
+                ? "Tempo esgotado."
+                : `Limite de ${cfg.gols_limite} gols atingido.`}{" "}
+              Encerre quando a jogada terminar.
+            </div>
+          ) : null}
+
+          {podeEditar ? (
+            <div className="row" style={{ justifyContent: "center" }}>
+              {status === "pendente" ? (
+                <button
+                  className="btn primary" disabled={pendente}
+                  onClick={() => { rodar(() => iniciarPartida(rodada.id, indice), "Bola rolando!"); setAbertaIdx(indice); }}
+                >
+                  Iniciar partida
+                </button>
+              ) : null}
+
+              {status === "andamento" && m.rodando ? (
+                <button className="btn dark" disabled={pendente} onClick={() => rodar(() => pausarPartida(rodada.id, indice))}>
+                  Pausar
+                </button>
+              ) : null}
+
+              {status === "andamento" && !m.rodando ? (
+                <>
+                  <button className="btn primary" disabled={pendente} onClick={() => rodar(() => iniciarPartida(rodada.id, indice))}>
+                    Retomar
+                  </button>
+                  <button className="btn ghost" disabled={pendente} onClick={() => rodar(() => zerarCronometro(rodada.id, indice), "Cronômetro zerado.")}>
+                    Zerar tempo
+                  </button>
+                </>
+              ) : null}
+
+              {status === "andamento" ? (
+                <button className="btn" disabled={pendente} onClick={() => rodar(() => encerrarPartida(rodada.id, indice), "Partida encerrada.")}>
+                  Encerrar
+                </button>
+              ) : null}
+
+              {status === "encerrada" ? (
+                <button className="btn sm ghost" disabled={pendente} onClick={() => rodar(() => reabrirPartida(rodada.id, indice))}>
+                  Reabrir partida
+                </button>
+              ) : null}
+
+              <div className="grow" />
+              <button
+                className="btn sm ghost danger" disabled={pendente}
+                onClick={() => rodar(() => removerConfronto(rodada.id, indice), "Confronto removido.")}
+              >
+                Remover confronto
+              </button>
+            </div>
+          ) : null}
+
+          {/* lances por jogador */}
+          <div className="lances">
+            {[A, B].map((tm) =>
+              tm ? (
+                <div className="lances-time" key={tm.id}>
+                  <div className={"lances-head " + tm.cls}>{tm.nome}</div>
+                  {tm.slots.filter((s) => s.playerId).map((s) => {
+                    const p = porId(s.playerId)!;
+                    const gols = (m.eventos || []).filter((e) => e.t === "gol" && e.playerId === p.id).length;
+                    const assists = (m.eventos || []).filter((e) => e.t === "assist" && e.playerId === p.id).length;
+                    return (
+                      <div className="lance-linha" key={p.id}>
+                        <span className="lance-nome">
+                          {tm.capitao === p.id ? <span className="cap">C</span> : null}
+                          {p.nome}
+                        </span>
+                        <button
+                          className={"marca" + (gols ? " tem" : "")}
+                          disabled={!podeEditar || pendente}
+                          title="Marcar gol"
+                          onClick={() => rodar(() => registrarLance(rodada.id, indice, { t: "gol", teamId: tm.id, playerId: p.id }))}
+                        >
+                          G<b>{gols}</b>
+                        </button>
+                        <button
+                          className={"marca" + (assists ? " tem" : "")}
+                          disabled={!podeEditar || pendente}
+                          title="Marcar assistência"
+                          onClick={() => rodar(() => registrarLance(rodada.id, indice, { t: "assist", teamId: tm.id, playerId: p.id }))}
+                        >
+                          A<b>{assists}</b>
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {podeEditar ? (
+                    <button
+                      className="btn sm ghost block"
+                      disabled={pendente}
+                      onClick={() => rodar(() => registrarLance(rodada.id, indice, { t: "gol", teamId: tm.id, playerId: null }))}
+                    >
+                      + Gol sem autor
+                    </button>
+                  ) : null}
+                </div>
+              ) : null
+            )}
+          </div>
+
+          {/* lances registrados */}
+          {(m.eventos || []).length ? (
+            <div className="linha-tempo">
+              <span className="eyebrow">Lances</span>
+              {(m.eventos || []).slice().reverse().map((e) => (
+                <div className="lance-item" key={e.id}>
+                  <span className="lance-min">{formatarRelogio(e.seg)}</span>
+                  <span className={"lance-tipo " + e.t}>{e.t === "gol" ? "GOL" : "ASS"}</span>
+                  <span className="grow">
+                    {e.playerId ? porId(e.playerId)?.nome || "—" : "sem autor"}
+                    <span className="note"> · {times.find((t) => t.id === e.teamId)?.nome}</span>
+                  </span>
+                  {podeEditar ? (
+                    <button
+                      className="btn-icone" title="Desfazer este lance" disabled={pendente}
+                      onClick={() => rodar(() => removerLance(rodada.id, indice, e.id))}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }

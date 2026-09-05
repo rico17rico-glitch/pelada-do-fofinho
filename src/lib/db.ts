@@ -33,6 +33,8 @@ export const CONFIG_PADRAO: Config = {
   qtd_times: 3,
   regra_partida: "7 minutos ou 2 gols",
   nome_pelada: "Pelada do Fofinho",
+  duracao_min: 7,
+  gols_limite: 2,
 };
 
 export async function lerConfig(): Promise<Config> {

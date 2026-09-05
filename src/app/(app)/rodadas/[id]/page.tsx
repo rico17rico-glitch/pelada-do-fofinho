@@ -12,5 +12,14 @@ export default async function PaginaRodada({ params }: { params: { id: string } 
   const [jogadores, cfg] = await Promise.all([lerJogadores(), lerConfig()]);
   const admin = ehAdmin(lerSessao());
 
-  return <Rodada rodada={rodada} jogadores={jogadores} cfg={cfg} admin={admin} />;
+  /* A hora do servidor vai junto para o cronômetro bater igual em todo aparelho. */
+  return (
+    <Rodada
+      rodada={rodada}
+      jogadores={jogadores}
+      cfg={cfg}
+      admin={admin}
+      agoraServidor={new Date().toISOString()}
+    />
+  );
 }

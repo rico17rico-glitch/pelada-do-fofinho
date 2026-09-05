@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { db, lerConfig, lerJogadores, lerRodada } from "./db";
 import { ehAdmin, gravarSessao, lerSessao, limparSessao } from "./session";
 import {
-  ATTRS, AttrKey, Player, Pos, Round, STATS_ZERO, calcularPremiacao, gerarPin,
-  ovr, precoUpgrade, sortearTimes, trocarNaEscalacao,
+  ATTRS, AttrKey, Evento, Player, Pos, Round, STATS_ZERO, calcularPremiacao,
+  decorridoSeg, gerarPin, idCurto, ovr, precoUpgrade, sortearTimes, textoRegra,
+  timesSemCapitao, trocarNaEscalacao,
 } from "./domain";
 
 type Resposta = { ok: boolean; erro?: string; msg?: string };
@@ -249,13 +250,140 @@ export async function trocarJogadores(roundId: string, k1: string, k2: string): 
   return patchRodada(roundId, { teams: atualizada.teams, reservas: atualizada.reservas });
 }
 
+/* ---------------------------------------------------------------------
+   Capitão e nome do time
+   --------------------------------------------------------------------- */
+export async function definirCapitao(roundId: string, teamId: string, playerId: string | null): Promise<Resposta> {
+  const negado = await exigirAdmin();
+  if (negado) return negado;
+  const r = await lerRodada(roundId);
+  if (!r || r.status === "finalizada") return erro("Rodada fechada.");
+
+  const teams = (r.teams || []).map((tm) => {
+    if (tm.id !== teamId) return tm;
+    if (playerId && !tm.slots.some((s) => s.playerId === playerId)) return tm;
+    return { ...tm, capitao: playerId };
+  });
+  return patchRodada(roundId, { teams });
+}
+
+export async function renomearTime(roundId: string, teamId: string, nome: string): Promise<Resposta> {
+  const negado = await exigirAdmin();
+  if (negado) return negado;
+  const limpo = (nome || "").trim().slice(0, 40);
+  if (!limpo) return erro("O time precisa de um nome.");
+  const r = await lerRodada(roundId);
+  if (!r || r.status === "finalizada") return erro("Rodada fechada.");
+  const teams = (r.teams || []).map((tm) => (tm.id === teamId ? { ...tm, nome: limpo } : tm));
+  return patchRodada(roundId, { teams });
+}
+
+/* ---------------------------------------------------------------------
+   Partidas: cronômetro e lances
+   --------------------------------------------------------------------- */
 export async function adicionarConfronto(roundId: string, a: string, b: string): Promise<Resposta> {
   const negado = await exigirAdmin();
   if (negado) return negado;
   if (a === b) return erro("Escolha dois times diferentes.");
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
-  return patchRodada(roundId, { matches: [...(r.matches || []), { a, b, ga: 0, gb: 0 }] });
+  const cfg = await lerConfig();
+  const nova = {
+    a, b,
+    eventos: [] as Evento[],
+    status: "pendente" as const,
+    duracaoSeg: Math.max(30, (cfg.duracao_min || 7) * 60),
+    acumuladoSeg: 0,
+    rodando: false,
+    iniciadoEm: null,
+  };
+  return patchRodada(roundId, { matches: [...(r.matches || []), nova] });
+}
+
+/** Aplica uma mudança numa partida da rodada, sempre com a rodada aberta. */
+async function comPartida(
+  roundId: string,
+  indice: number,
+  fn: (m: Round["matches"][number], r: Round) => Round["matches"][number] | { erro: string }
+): Promise<Resposta> {
+  const negado = await exigirAdmin();
+  if (negado) return negado;
+  const r = await lerRodada(roundId);
+  if (!r || r.status === "finalizada") return erro("Rodada fechada.");
+  const matches = (r.matches || []).slice();
+  const alvo = matches[indice];
+  if (!alvo) return erro("Confronto não encontrado.");
+  const saida = fn({ ...alvo }, r);
+  if ("erro" in saida) return erro(saida.erro as string);
+  matches[indice] = saida;
+  return patchRodada(roundId, { matches });
+}
+
+export async function iniciarPartida(roundId: string, indice: number): Promise<Resposta> {
+  return comPartida(roundId, indice, (m) => ({
+    ...m,
+    status: "andamento",
+    rodando: true,
+    iniciadoEm: new Date().toISOString(),
+    acumuladoSeg: m.acumuladoSeg || 0,
+  }));
+}
+
+export async function pausarPartida(roundId: string, indice: number): Promise<Resposta> {
+  return comPartida(roundId, indice, (m) => ({
+    ...m,
+    rodando: false,
+    acumuladoSeg: decorridoSeg(m, Date.now()),
+    iniciadoEm: null,
+  }));
+}
+
+export async function zerarCronometro(roundId: string, indice: number): Promise<Resposta> {
+  return comPartida(roundId, indice, (m) => ({
+    ...m,
+    rodando: false,
+    acumuladoSeg: 0,
+    iniciadoEm: null,
+  }));
+}
+
+export async function encerrarPartida(roundId: string, indice: number): Promise<Resposta> {
+  return comPartida(roundId, indice, (m) => ({
+    ...m,
+    status: "encerrada",
+    rodando: false,
+    acumuladoSeg: decorridoSeg(m, Date.now()),
+    iniciadoEm: null,
+  }));
+}
+
+export async function reabrirPartida(roundId: string, indice: number): Promise<Resposta> {
+  return comPartida(roundId, indice, (m) => ({ ...m, status: "andamento" }));
+}
+
+export async function registrarLance(
+  roundId: string,
+  indice: number,
+  lance: { t: "gol" | "assist"; teamId: string; playerId: string | null }
+): Promise<Resposta> {
+  return comPartida(roundId, indice, (m) => {
+    if (lance.teamId !== m.a && lance.teamId !== m.b) return { erro: "Time fora deste confronto." };
+    const evento: Evento = {
+      id: idCurto("e_"),
+      t: lance.t,
+      teamId: lance.teamId,
+      playerId: lance.playerId,
+      seg: Math.round(decorridoSeg(m, Date.now())),
+    };
+    return { ...m, eventos: [...(m.eventos || []), evento] };
+  });
+}
+
+export async function removerLance(roundId: string, indice: number, eventoId: string): Promise<Resposta> {
+  return comPartida(roundId, indice, (m) => ({
+    ...m,
+    eventos: (m.eventos || []).filter((e) => e.id !== eventoId),
+  }));
 }
 
 export async function removerConfronto(roundId: string, indice: number): Promise<Resposta> {
@@ -268,26 +396,6 @@ export async function removerConfronto(roundId: string, indice: number): Promise
   return patchRodada(roundId, { matches });
 }
 
-export async function ajustarPlacar(roundId: string, indice: number, lado: "ga" | "gb", delta: number): Promise<Resposta> {
-  const negado = await exigirAdmin();
-  if (negado) return negado;
-  const r = await lerRodada(roundId);
-  if (!r || r.status === "finalizada") return erro("Rodada fechada.");
-  const matches = (r.matches || []).map((m, i) => (i === indice ? { ...m, [lado]: Math.max(0, m[lado] + delta) } : m));
-  return patchRodada(roundId, { matches });
-}
-
-export async function ajustarEstatistica(roundId: string, playerId: string, campo: "g" | "a", delta: number): Promise<Resposta> {
-  const negado = await exigirAdmin();
-  if (negado) return negado;
-  const r = await lerRodada(roundId);
-  if (!r || r.status === "finalizada") return erro("Rodada fechada.");
-  const stats = { ...(r.stats || {}) };
-  const atual = stats[playerId] || { g: 0, a: 0 };
-  stats[playerId] = { ...atual, [campo]: Math.max(0, atual[campo] + delta) };
-  return patchRodada(roundId, { stats });
-}
-
 /* Fecha a rodada e credita os pontos. Guarda o que cada um ganhou,
    para que reabrir devolva exatamente a mesma coisa. */
 export async function finalizarRodada(roundId: string, campeaoManual: string | null): Promise<Resposta> {
@@ -297,6 +405,15 @@ export async function finalizarRodada(roundId: string, campeaoManual: string | n
   if (!r) return erro("Rodada não encontrada.");
   if (r.status === "finalizada") return erro("Essa rodada já foi fechada.");
   if (!(r.matches || []).length) return erro("Lance pelo menos um confronto antes de fechar.");
+
+  const semCapitao = timesSemCapitao(r);
+  if (semCapitao.length) {
+    return erro(
+      semCapitao.length === 1
+        ? `${semCapitao[0].nome} ainda está sem capitão.`
+        : `${semCapitao.length} times ainda estão sem capitão.`
+    );
+  }
 
   const cfg = await lerConfig();
   const { campeao, premios } = calcularPremiacao({ ...r, campeao: campeaoManual }, cfg);
@@ -366,13 +483,17 @@ export async function salvarConfig(form: Record<string, any>): Promise<Resposta>
     const x = parseInt(String(v), 10);
     return isNaN(x) ? d : Math.max(0, x);
   };
+  const duracao_min = Math.max(1, n(form.duracao_min, cfg.duracao_min));
+  const gols_limite = n(form.gols_limite, cfg.gols_limite);
   const patch = {
     pontos_vitoria: n(form.pontos_vitoria, cfg.pontos_vitoria),
     pontos_gol: n(form.pontos_gol, cfg.pontos_gol),
     pontos_assist: n(form.pontos_assist, cfg.pontos_assist),
     faixas: (cfg.faixas || []).map((f, i) => ({ ate: f.ate, preco: n(form["faixa" + i], f.preco) })),
     qtd_times: n(form.qtd_times, cfg.qtd_times) || 3,
-    regra_partida: String(form.regra_partida || cfg.regra_partida),
+    duracao_min,
+    gols_limite,
+    regra_partida: textoRegra({ duracao_min, gols_limite }),
     nome_pelada: String(form.nome_pelada || cfg.nome_pelada),
     admin_pin: String(form.admin_pin || cfg.admin_pin).trim() || cfg.admin_pin,
   };

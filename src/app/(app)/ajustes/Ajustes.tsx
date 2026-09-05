@@ -15,7 +15,8 @@ export default function Ajustes({ cfg }: { cfg: Config }) {
     pontos_gol: cfg.pontos_gol,
     pontos_assist: cfg.pontos_assist,
     qtd_times: cfg.qtd_times,
-    regra_partida: cfg.regra_partida,
+    duracao_min: cfg.duracao_min,
+    gols_limite: cfg.gols_limite,
     nome_pelada: cfg.nome_pelada,
     admin_pin: cfg.admin_pin,
     ...Object.fromEntries((cfg.faixas || []).map((x, i) => ["faixa" + i, x.preco])),
@@ -73,21 +74,30 @@ export default function Ajustes({ cfg }: { cfg: Config }) {
         </div>
 
         <div className="card pad stack">
-          <div className="sect-title">Geral</div>
+          <div className="sect-title">A partida</div>
           <div className="grid2">
-            <label className="field">
-              <span>Nome da pelada</span>
-              <input value={f.nome_pelada} onChange={(e) => set("nome_pelada", e.target.value)} />
-            </label>
-            <label className="field">
-              <span>Regra da partida</span>
-              <input value={f.regra_partida} onChange={(e) => set("regra_partida", e.target.value)} />
-            </label>
+            <Num k="duracao_min" label="Duração (minutos)" />
+            <Num k="gols_limite" label="Limite de gols" />
             <label className="field">
               <span>Times por rodada</span>
               <select value={f.qtd_times} onChange={(e) => set("qtd_times", e.target.value)}>
                 {[2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
+            </label>
+          </div>
+          <p className="note">
+            O cronômetro de cada confronto começa em {f.duracao_min || 0} minutos. Ao bater o tempo ou{" "}
+            {f.gols_limite || 0} gols, o site avisa — quem encerra a partida é você.
+            Coloque 0 no limite de gols para valer só o tempo.
+          </p>
+        </div>
+
+        <div className="card pad stack">
+          <div className="sect-title">Geral</div>
+          <div className="grid2">
+            <label className="field">
+              <span>Nome da pelada</span>
+              <input value={f.nome_pelada} onChange={(e) => set("nome_pelada", e.target.value)} />
             </label>
             <label className="field">
               <span>PIN do mestre</span>

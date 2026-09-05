@@ -25,6 +25,10 @@ create table if not exists config (
 
 insert into config (id) values (1) on conflict (id) do nothing;
 
+-- Duração da partida e limite de gols (usados pelo cronômetro).
+alter table config add column if not exists duracao_min int not null default 7;
+alter table config add column if not exists gols_limite int not null default 2;
+
 -- ---------------------------------------------------------------------
 -- Jogadores
 -- ---------------------------------------------------------------------
