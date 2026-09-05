@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import type { Config, Lancamento, Player, Round } from "./domain";
+import type { Copa } from "./copa";
 
 /* O site conversa com o Supabase só pelo servidor, com a chave service_role.
    Nada disso chega ao navegador. */
@@ -73,4 +74,22 @@ export async function lerCaixa(): Promise<Lancamento[]> {
     .order("criado_em", { ascending: false });
   if (error || !data) return [];
   return (data as Lancamento[]).map((l) => ({ ...l, valor: Number(l.valor) || 0 }));
+}
+
+/* ---------------------------------------------------------------------
+   Copa Fofo
+   --------------------------------------------------------------------- */
+export async function lerCopas(): Promise<Copa[]> {
+  const { data, error } = await db()
+    .from("copas")
+    .select("*")
+    .order("edicao", { ascending: false, nullsFirst: false })
+    .order("criado_em", { ascending: false });
+  if (error || !data) return [];
+  return data as Copa[];
+}
+
+export async function lerCopa(id: string): Promise<Copa | null> {
+  const { data } = await db().from("copas").select("*").eq("id", id).maybeSingle();
+  return (data as Copa) || null;
 }

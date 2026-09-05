@@ -3,11 +3,11 @@ import { redirect } from "next/navigation";
 import { lerConfig, lerJogador } from "@/lib/db";
 import { ehAdmin, lerSessao } from "@/lib/session";
 import { sair } from "@/lib/actions";
-import Abas from "@/components/Abas";
+import AbasCopa from "@/components/AbasCopa";
 
 export const dynamic = "force-dynamic";
 
-export default async function LayoutApp({ children }: { children: React.ReactNode }) {
+export default async function LayoutCopa({ children }: { children: React.ReactNode }) {
   const sessao = lerSessao();
   if (!sessao) redirect("/");
 
@@ -17,38 +17,32 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
   if (!admin && !eu) redirect("/");
 
   return (
-    <>
-      <header className="topbar">
+    <div className="copa-mundo">
+      <header className="topbar copa-topbar">
         <div className="wrap">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="badge-logo" src="/escudo.png" alt="" />
           <div className="brandblock">
-            <b>{cfg.nome_pelada}</b>
-            <span>Futsal · {cfg.regra_partida}</span>
+            <b>Copa Fofo</b>
+            <span>Torneio da {cfg.nome_pelada}</span>
           </div>
           <div className="grow" />
-          <Link className="btn sm ghost atalho-copa" href="/copa">Copa Fofo</Link>
-          {admin ? (
-            <div className="who"><span className="dot" />Mestre da pelada</div>
-          ) : (
-            /* atalho para o próprio perfil, onde dá para trocar o PIN */
-            <Link className="who eu" href={`/jogador/${eu!.id}`}>
-              <span className="dot" />
-              {eu!.nome}
-            </Link>
-          )}
+          <div className="who">
+            <span className="dot" />
+            {admin ? "Mestre da pelada" : eu?.nome}
+          </div>
+          <Link className="btn sm ghost" href="/ranking" style={{ color: "var(--header-text)", borderColor: "rgba(255,251,232,.35)" }}>
+            ← Pelada
+          </Link>
           <form action={sair}>
-            <button
-              className="btn sm ghost"
-              style={{ color: "var(--header-text)", borderColor: "rgba(255,251,232,.35)" }}
-            >
+            <button className="btn sm ghost" style={{ color: "var(--header-text)", borderColor: "rgba(255,251,232,.35)" }}>
               Sair
             </button>
           </form>
         </div>
       </header>
 
-      <Abas admin={admin} />
+      <AbasCopa />
 
       <main>
         <div className="wrap">{children}</div>
@@ -56,10 +50,10 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
 
       <footer className="site">
         <div className="wrap">
-          {cfg.nome_pelada} · vitória vale {cfg.pontos_vitoria} pts, gol {cfg.pontos_gol}, assistência{" "}
-          {cfg.pontos_assist}.
+          Copa Fofo · 5 times, todos contra todos, o último cai. Depois 1º×4º e 2º×3º.
+          Nada daqui conta no ranking da pelada.
         </div>
       </footer>
-    </>
+    </div>
   );
 }
