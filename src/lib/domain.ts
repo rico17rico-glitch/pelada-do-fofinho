@@ -1,0 +1,290 @@
+/* =====================================================================
+   Regras da Pelada do Fofinho.
+   Nenhuma função aqui toca no banco nem no navegador — é só a regra pura,
+   o que torna tudo fácil de conferir e de mudar num lugar só.
+   ===================================================================== */
+
+export type Pos = "GOLEIRO" | "FIXO" | "ALA" | "PIVO";
+
+export const POSITIONS: Pos[] = ["GOLEIRO", "FIXO", "ALA", "PIVO"];
+export const POS_LABEL: Record<Pos, string> = { GOLEIRO: "GOL", FIXO: "FIX", ALA: "ALA", PIVO: "PIV" };
+export const POS_FULL: Record<Pos, string> = { GOLEIRO: "Goleiro", FIXO: "Fixo", ALA: "Ala", PIVO: "Pivô" };
+
+/** Formação de futsal: um time é sempre goleiro, fixo, dois alas e pivô. */
+export const FORMATION: Pos[] = ["GOLEIRO", "FIXO", "ALA", "ALA", "PIVO"];
+
+export const ATTRS = [
+  { k: "fin", nome: "Finalização" },
+  { k: "vis", nome: "Visão de jogo" },
+  { k: "def", nome: "Defesa" },
+  { k: "int", nome: "Intensidade" },
+] as const;
+
+export type AttrKey = (typeof ATTRS)[number]["k"];
+
+export const BASES = [60, 65, 70, 75, 80];
+
+export const TEAM_STYLES = [
+  { cls: "c-gold", nome: "Time Ouro", hex: "#F6A821" },
+  { cls: "c-navy", nome: "Time Marinho", hex: "#0A3163" },
+  { cls: "c-orange", nome: "Time Laranja", hex: "#D9631F" },
+  { cls: "c-green", nome: "Time Verde", hex: "#1F8A4C" },
+];
+
+export type Faixa = { ate: number; preco: number };
+
+export type Config = {
+  pontos_vitoria: number;
+  pontos_gol: number;
+  pontos_assist: number;
+  faixas: Faixa[];
+  admin_pin: string;
+  qtd_times: number;
+  regra_partida: string;
+  nome_pelada: string;
+};
+
+export type Stats = {
+  rodadas: number; jogos: number; v: number; e: number; d: number;
+  gols: number; assist: number; titulos: number; moedasTotais: number;
+};
+
+export type Player = {
+  id: string;
+  nome: string;
+  pos: Pos;
+  alt: Pos[];
+  tipo: "mensalista" | "avulso";
+  ativo: boolean;
+  pin: string;
+  atr_fin: number; atr_vis: number; atr_def: number; atr_int: number;
+  moedas: number;
+  stats: Stats;
+  historico: { txt: string; custo: number; em: string }[];
+};
+
+export type Slot = { pos: Pos; playerId: string | null };
+export type Team = { id: string; nome: string; cls: string; hex: string; slots: Slot[] };
+export type Match = { a: string; b: string; ga: number; gb: number };
+export type Premio = {
+  moedas: number; rodadas: number; jogos: number;
+  v: number; e: number; d: number; gols: number; assist: number; titulos: number;
+};
+
+export type Round = {
+  id: string;
+  data: string;
+  nome: string | null;
+  status: "aberta" | "finalizada";
+  present: string[];
+  teams: Team[];
+  reservas: string[];
+  matches: Match[];
+  stats: Record<string, { g: number; a: number }>;
+  campeao: string | null;
+  premios: Record<string, Premio>;
+};
+
+/* --------------------------------------------------------------------
+   Overall: média simples dos quatro critérios.
+   Cada +1 num critério vale +0,25 no overall.
+   -------------------------------------------------------------------- */
+export function ovr(p: Pick<Player, "atr_fin" | "atr_vis" | "atr_def" | "atr_int"> | null | undefined): number {
+  if (!p) return 0;
+  return Math.round((p.atr_fin + p.atr_vis + p.atr_def + p.atr_int) / 4);
+}
+
+export function attrValue(p: Player, k: AttrKey): number {
+  return p[("atr_" + k) as "atr_fin"];
+}
+
+export function ovrTier(v: number): string {
+  return v >= 88 ? "t90" : v >= 76 ? "t80" : v > 0 ? "t70" : "t0";
+}
+
+/** Quanto custa subir +1 num critério, conforme o valor atual dele. */
+export function precoUpgrade(valor: number, cfg: Pick<Config, "faixas">): number {
+  const f = cfg.faixas && cfg.faixas.length ? cfg.faixas : [{ ate: 99, preco: 100 }];
+  for (const b of f) if (valor <= b.ate) return b.preco;
+  return f[f.length - 1].preco;
+}
+
+/* --------------------------------------------------------------------
+   Classificação do dia. O campeão é quem tem MAIS VITÓRIAS;
+   empate resolve por pontos (3/1/0), depois saldo, depois gols pró.
+   -------------------------------------------------------------------- */
+export type LinhaTabela = {
+  id: string; nome: string; j: number; v: number; e: number; d: number;
+  gp: number; gc: number; pts: number;
+};
+
+export function tabelaRodada(round: Pick<Round, "teams" | "matches">): LinhaTabela[] {
+  const t: Record<string, LinhaTabela> = {};
+  (round.teams || []).forEach((tm) => {
+    t[tm.id] = { id: tm.id, nome: tm.nome, j: 0, v: 0, e: 0, d: 0, gp: 0, gc: 0, pts: 0 };
+  });
+  (round.matches || []).forEach((m) => {
+    const A = t[m.a], B = t[m.b];
+    if (!A || !B) return;
+    A.j++; B.j++;
+    A.gp += m.ga; A.gc += m.gb; B.gp += m.gb; B.gc += m.ga;
+    if (m.ga > m.gb) { A.v++; B.d++; A.pts += 3; }
+    else if (m.gb > m.ga) { B.v++; A.d++; B.pts += 3; }
+    else { A.e++; B.e++; A.pts++; B.pts++; }
+  });
+  return Object.values(t).sort(
+    (x, y) => y.v - x.v || y.pts - x.pts || (y.gp - y.gc) - (x.gp - x.gc) || y.gp - x.gp || x.nome.localeCompare(y.nome)
+  );
+}
+
+/* --------------------------------------------------------------------
+   Premiação: 50 pontos para todos do time campeão do dia,
+   5 por gol e 2 por assistência (somando todos os confrontos).
+   -------------------------------------------------------------------- */
+export function calcularPremiacao(round: Round, cfg: Config): { campeao: string | null; premios: Record<string, Premio> } {
+  const tab = tabelaRodada(round);
+  const porTime: Record<string, LinhaTabela> = Object.fromEntries(tab.map((r) => [r.id, r]));
+  const campeao = round.campeao || (tab[0] ? tab[0].id : null);
+  const premios: Record<string, Premio> = {};
+
+  (round.teams || []).forEach((tm) => {
+    const r = porTime[tm.id] || { j: 0, v: 0, e: 0, d: 0 } as LinhaTabela;
+    const venceu = tm.id === campeao;
+    (tm.slots || []).forEach((s) => {
+      if (!s.playerId) return;
+      const st = (round.stats || {})[s.playerId] || { g: 0, a: 0 };
+      premios[s.playerId] = {
+        moedas: (venceu ? cfg.pontos_vitoria : 0) + st.g * cfg.pontos_gol + st.a * cfg.pontos_assist,
+        rodadas: 1, jogos: r.j, v: r.v, e: r.e, d: r.d,
+        gols: st.g, assist: st.a, titulos: venceu ? 1 : 0,
+      };
+    });
+  });
+
+  return { campeao, premios };
+}
+
+/* --------------------------------------------------------------------
+   Sorteio dos times.
+   1) Distribui posição por posição, começando pelas mais escassas.
+   2) Em cada rodada de distribuição, o time mais fraco escolhe primeiro.
+   3) Depois troca jogadores de mesma posição entre times enquanto
+      isso diminuir a diferença de força.
+   -------------------------------------------------------------------- */
+const byId = (arr: Player[], id: string | null) => arr.find((p) => p.id === id) || null;
+
+export function sortearTimes(pool: Player[], nTimes: number): { times: Team[]; reservas: string[] } {
+  const times: Team[] = [];
+  for (let i = 0; i < nTimes; i++) {
+    const st = TEAM_STYLES[i % TEAM_STYLES.length];
+    times.push({
+      id: "T" + (i + 1),
+      nome: st.nome, cls: st.cls, hex: st.hex,
+      slots: FORMATION.map((p) => ({ pos: p, playerId: null })),
+    });
+  }
+
+  let resto = pool.slice().sort(() => Math.random() - 0.5);
+  const total = (tm: Team) => tm.slots.reduce((s, x) => s + (x.playerId ? ovr(byId(pool, x.playerId)) : 0), 0);
+
+  const escolher = (pos: Pos): Player | null => {
+    let grupo = resto.filter((p) => p.pos === pos);
+    if (!grupo.length) grupo = resto.filter((p) => (p.alt || []).includes(pos));
+    if (!grupo.length) grupo = resto.filter((p) => (pos === "GOLEIRO" ? true : p.pos !== "GOLEIRO"));
+    if (!grupo.length) grupo = resto;
+    grupo = grupo.slice().sort((a, b) => ovr(b) - ovr(a));
+    return grupo[0] || null;
+  };
+
+  (["GOLEIRO", "FIXO", "PIVO", "ALA", "ALA"] as Pos[]).forEach((pos) => {
+    const fila = times.slice().sort((a, b) => total(a) - total(b));
+    fila.forEach((tm) => {
+      const idx = tm.slots.findIndex((s) => s.pos === pos && !s.playerId);
+      if (idx < 0) return;
+      const c = escolher(pos);
+      if (!c) return;
+      resto = resto.filter((p) => p.id !== c.id);
+      tm.slots[idx].playerId = c.id;
+    });
+  });
+
+  equilibrar(times, pool);
+  return { times, reservas: resto.map((p) => p.id) };
+}
+
+export function equilibrar(times: Team[], pool: Player[]): void {
+  if (times.length < 2) return;
+  const soma = (tm: Team) => tm.slots.reduce((s, x) => s + (x.playerId ? ovr(byId(pool, x.playerId)) : 0), 0);
+  const spread = () => { const v = times.map(soma); return Math.max(...v) - Math.min(...v); };
+  let melhor = spread();
+
+  for (let it = 0; it < 3000 && melhor > 0; it++) {
+    const a = Math.floor(Math.random() * times.length);
+    const b = Math.floor(Math.random() * times.length);
+    if (a === b) continue;
+    const si = Math.floor(Math.random() * FORMATION.length);
+    const pos = times[a].slots[si].pos;
+    const cands = times[b].slots.map((s, i) => ({ s, i })).filter((o) => o.s.pos === pos);
+    if (!cands.length) continue;
+    const sj = cands[Math.floor(Math.random() * cands.length)].i;
+
+    const tmp = times[a].slots[si].playerId;
+    times[a].slots[si].playerId = times[b].slots[sj].playerId;
+    times[b].slots[sj].playerId = tmp;
+
+    const novo = spread();
+    if (novo < melhor) melhor = novo;
+    else {
+      const t2 = times[a].slots[si].playerId;
+      times[a].slots[si].playerId = times[b].slots[sj].playerId;
+      times[b].slots[sj].playerId = t2;
+    }
+  }
+}
+
+/** Troca dois jogadores de lugar — entre slots ou com alguém do banco. */
+export function trocarNaEscalacao(round: Round, k1: string, k2: string): Round {
+  const get = (k: string) => {
+    if (k.startsWith("R:")) return { tipo: "banco" as const, id: k.slice(2) };
+    const [tid, i] = k.split(":");
+    const tm = round.teams.find((x) => x.id === tid);
+    return { tipo: "slot" as const, slot: tm ? tm.slots[parseInt(i, 10)] : null };
+  };
+  const A = get(k1), B = get(k2);
+
+  if (A.tipo === "slot" && B.tipo === "slot") {
+    if (!A.slot || !B.slot) return round;
+    const tmp = A.slot.playerId;
+    A.slot.playerId = B.slot.playerId;
+    B.slot.playerId = tmp;
+  } else if (A.tipo === "slot" || B.tipo === "slot") {
+    const s = (A.tipo === "slot" ? A : (B as any)).slot;
+    const bancoId = (A.tipo === "banco" ? A : (B as any)).id;
+    if (!s) return round;
+    const saindo = s.playerId;
+    s.playerId = bancoId;
+    round.reservas = (round.reservas || []).filter((x) => x !== bancoId);
+    if (saindo) round.reservas.push(saindo);
+  }
+  return round;
+}
+
+/* Estatísticas zeradas, usadas ao criar jogador e ao estornar rodada. */
+export const STATS_ZERO: Stats = {
+  rodadas: 0, jogos: 0, v: 0, e: 0, d: 0, gols: 0, assist: 0, titulos: 0, moedasTotais: 0,
+};
+
+export function formatarData(iso: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+export function hojeISO(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+export function gerarPin(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
