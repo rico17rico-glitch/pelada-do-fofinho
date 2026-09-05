@@ -92,12 +92,16 @@ export default function Rodada({
   function criarAvulso() {
     const nome = nomeAvulso.trim();
     if (!nome) return avisar("Coloque o nome do avulso.");
-    rodar(() => salvarJogador({ nome, pos: "ALA", alt: [], tipo: "avulso", base: baseAvulso })).then((ok) => {
-      if (!ok) return;
-      setNovoAvulso(false);
-      setNomeAvulso("");
-      avisar(`${nome} entrou na lista. Marque-o como presente para incluir no sorteio.`);
-    });
+    setPendente(true);
+    salvarJogador({ nome, pos: "ALA", alt: [], tipo: "avulso", base: baseAvulso })
+      .then((r) => {
+        if (!r.ok) return avisar(r.erro || "Não deu para cadastrar.");
+        setNovoAvulso(false);
+        setNomeAvulso("");
+        router.refresh();
+        avisar(`${nome} entrou na lista. PIN ${r.pin} — anote e passe para ele.`);
+      })
+      .finally(() => setPendente(false));
   }
 
   return (
@@ -139,7 +143,7 @@ export default function Rodada({
             {podeEditar ? (
               <div className="row">
                 <button className="btn sm" onClick={() => setNovoAvulso(true)}>+ Jogador avulso</button>
-                <span className="note">Avulso entra no sorteio e pontua, mas não tem login.</span>
+                <span className="note">Avulso entra no sorteio, pontua e também recebe PIN para entrar.</span>
               </div>
             ) : null}
           </div>
@@ -502,7 +506,7 @@ export default function Rodada({
               ))}
             </div>
           </div>
-          <p className="note">Ele entra no elenco como avulso: joga, marca gol e pontua, mas não recebe PIN de login.</p>
+          <p className="note">Ele entra no elenco como avulso: joga, marca gol, pontua e recebe um PIN de 4 dígitos para acompanhar os próprios números. O PIN aparece aqui assim que você cadastrar.</p>
         </Modal>
       ) : null}
 

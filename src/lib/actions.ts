@@ -10,7 +10,7 @@ import {
   sortearTimes, textoRegra, TipoLancamento, timesSemCapitao, trocarNaEscalacao,
 } from "./domain";
 
-type Resposta = { ok: boolean; erro?: string; msg?: string };
+type Resposta = { ok: boolean; erro?: string; msg?: string; pin?: string };
 
 const OK: Resposta = { ok: true };
 const erro = (e: string): Resposta => ({ ok: false, erro: e });
@@ -121,13 +121,17 @@ export async function salvarJogador(form: FormJogador): Promise<Resposta> {
     if (error) return erro(error.message);
   } else {
     const base = Math.max(1, Math.min(99, Number(form.base) || 65));
+    /* Todo jogador entra com PIN — avulso também acompanha os próprios números. */
+    const pin = gerarPin();
     const { error } = await db().from("players").insert({
       nome, pos: form.pos, alt, tipo: form.tipo, ativo: true,
-      pin: form.tipo === "avulso" ? "" : gerarPin(),
+      pin,
       atr_fin: base, atr_vis: base, atr_def: base, atr_int: base,
       moedas: 0, stats: STATS_ZERO, historico: [],
     });
     if (error) return erro(error.message);
+    atualizarTudo();
+    return { ok: true, msg: `${nome} cadastrado. PIN ${pin}.`, pin };
   }
   atualizarTudo();
   return OK;

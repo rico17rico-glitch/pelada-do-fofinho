@@ -19,8 +19,9 @@ export default async function PaginaEntrada() {
     const [cfg, todos] = await Promise.all([lerConfig(), lerJogadores()]);
     nomePelada = cfg.nome_pelada;
     regra = cfg.regra_partida;
+    /* Entra na lista quem está ativo e tem PIN — mensalista ou avulso. */
     jogadores = todos
-      .filter((p) => p.ativo !== false && p.tipo !== "avulso")
+      .filter((p) => p.ativo !== false && !!(p.pin || "").trim())
       .map((p) => ({ id: p.id, nome: p.nome }));
   } catch (e: any) {
     falha = e?.message || "Não consegui falar com o banco de dados.";

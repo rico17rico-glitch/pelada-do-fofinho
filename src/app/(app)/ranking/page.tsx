@@ -25,8 +25,8 @@ export default async function PaginaRanking({
       <div className="card empty">
         <h3>Sem elenco ainda</h3>
         <p style={{ maxWidth: "44ch", margin: "0 auto 16px" }}>
-          Cadastre a galera com nome, posição e nota base (60 a 80). Cada mensalista recebe um PIN
-          para entrar e acompanhar os próprios números.
+          Cadastre a galera com nome, posição e nota base (60 a 80). Todo jogador recebe um PIN
+          de 4 dígitos para entrar e acompanhar os próprios números.
         </p>
         {admin ? (
           <Link className="btn primary" href="/elenco">Ir para o elenco</Link>
