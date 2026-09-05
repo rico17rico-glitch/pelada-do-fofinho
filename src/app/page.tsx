@@ -1,13 +1,15 @@
 import { redirect } from "next/navigation";
-import { lerConfig, lerJogadores } from "@/lib/db";
+import { lerConfig, lerJogador, lerJogadores } from "@/lib/db";
 import { lerSessao } from "@/lib/session";
 import FormularioEntrada from "./FormularioEntrada";
 
 export const dynamic = "force-dynamic";
 
 export default async function PaginaEntrada() {
-  if (lerSessao()) redirect("/ranking");
-
+const sessao = lerSessao();
+  const eu = sessao && sessao.tipo === "jogador" ? await lerJogador(sessao.playerId).catch(() => null) : null;
+  if (sessao && (sessao.tipo === "admin" || (eu && eu.ativo !== false))) redirect("/ranking");
+  
   let nomePelada = "Pelada do Fofinho";
   let regra = "";
   let jogadores: { id: string; nome: string }[] = [];
