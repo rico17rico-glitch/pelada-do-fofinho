@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import type { Config, Player, Round } from "./domain";
+import type { Config, Lancamento, Player, Round } from "./domain";
 
 /* O site conversa com o Supabase só pelo servidor, com a chave service_role.
    Nada disso chega ao navegador. */
@@ -63,4 +63,14 @@ export async function lerRodadas(): Promise<Round[]> {
 export async function lerRodada(id: string): Promise<Round | null> {
   const { data } = await db().from("rounds").select("*").eq("id", id).maybeSingle();
   return (data as Round) || null;
+}
+
+export async function lerCaixa(): Promise<Lancamento[]> {
+  const { data, error } = await db()
+    .from("caixa")
+    .select("*")
+    .order("data", { ascending: false })
+    .order("criado_em", { ascending: false });
+  if (error || !data) return [];
+  return (data as Lancamento[]).map((l) => ({ ...l, valor: Number(l.valor) || 0 }));
 }

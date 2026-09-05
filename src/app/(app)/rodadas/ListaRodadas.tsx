@@ -8,8 +8,8 @@ import { criarRodada } from "@/lib/actions";
 import { Modal, Toast, useToast } from "@/components/ui";
 
 export default function ListaRodadas({
-  rodadas, admin, cfg,
-}: { rodadas: Round[]; admin: boolean; cfg: Config }) {
+  rodadas, podeCriar, cfg,
+}: { rodadas: Round[]; podeCriar: boolean; cfg: Config }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const { msg, avisar } = useToast();
@@ -34,7 +34,7 @@ export default function ListaRodadas({
           <p>Cada dia de pelada é uma rodada: sorteio, confrontos e distribuição de pontos.</p>
         </div>
         <div className="grow" />
-        {admin ? (
+        {podeCriar ? (
           <button className="btn primary" onClick={() => { setData(hojeISO()); setNome(""); setCriando(true); }}>
             Nova rodada
           </button>
@@ -73,9 +73,9 @@ export default function ListaRodadas({
         <div className="card empty">
           <h3>Nenhuma rodada ainda</h3>
           <p>
-            {admin
+            {podeCriar
               ? "Crie a rodada do próximo fim de semana, marque quem confirmou e sorteie os times."
-              : "O mestre da pelada ainda não abriu nenhuma rodada."}
+              : "Ninguém abriu rodada ainda."}
           </p>
         </div>
       )}

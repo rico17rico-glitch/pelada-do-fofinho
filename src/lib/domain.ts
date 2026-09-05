@@ -65,6 +65,8 @@ export type Player = {
   alt: Pos[];
   tipo: "mensalista" | "avulso";
   ativo: boolean;
+  /** Organizador manda na rodada igual ao mestre: cria, sorteia, apita e fecha. */
+  organizador?: boolean;
   pin: string;
   atr_fin: number; atr_vis: number; atr_def: number; atr_int: number;
   moedas: number;
@@ -360,8 +362,93 @@ export function timesSemCapitao(round: Pick<Round, "teams">): Team[] {
   return (round.teams || []).filter((tm) => !tm.capitao);
 }
 
+/* =====================================================================
+   Quem pode o quê numa rodada
+   - mestre e organizadores: tudo
+   - capitão: apita as partidas (cronômetro, gols, assistências, confrontos)
+   ===================================================================== */
+export type Permissoes = {
+  admin: boolean;
+  /** Criar rodada, mexer em presença, times, capitães e fechar a rodada. */
+  gerirRodada: boolean;
+  /** Comandar cronômetro, lances e confrontos. */
+  gerirPartidas: boolean;
+};
+
+export function ehCapitaoNaRodada(round: Pick<Round, "teams">, playerId: string | null): boolean {
+  if (!playerId) return false;
+  return (round.teams || []).some((tm) => tm.capitao === playerId);
+}
+
+export function permissoesDaRodada(
+  round: Pick<Round, "teams">,
+  ator: { admin: boolean; jogador: Player | null }
+): Permissoes {
+  const organizador = !!ator.jogador?.organizador;
+  const gerirRodada = ator.admin || organizador;
+  return {
+    admin: ator.admin,
+    gerirRodada,
+    gerirPartidas: gerirRodada || ehCapitaoNaRodada(round, ator.jogador?.id || null),
+  };
+}
+
 export function idCurto(prefixo: string): string {
   return prefixo + Math.random().toString(36).slice(2, 9);
+}
+
+/* =====================================================================
+   Caixa da pelada — valores lançados na mão
+   ===================================================================== */
+export type TipoLancamento = "entrada" | "saida";
+
+export type Lancamento = {
+  id: string;
+  data: string;
+  descricao: string;
+  tipo: TipoLancamento;
+  valor: number;
+  categoria: string | null;
+  criado_por: string | null;
+  criado_em?: string;
+};
+
+export const CATEGORIAS_CAIXA = [
+  "Mensalidade",
+  "Diária de avulso",
+  "Aluguel da quadra",
+  "Material",
+  "Bola",
+  "Colete",
+  "Água e gelo",
+  "Churrasco",
+  "Outros",
+];
+
+export type ResumoCaixa = { saldo: number; entradas: number; saidas: number };
+
+export function resumoCaixa(lancamentos: Lancamento[]): ResumoCaixa {
+  let entradas = 0, saidas = 0;
+  for (const l of lancamentos) {
+    const v = Number(l.valor) || 0;
+    if (l.tipo === "entrada") entradas += v;
+    else saidas += v;
+  }
+  /* arredonda para centavos: somar float acumula sujeira na 15ª casa */
+  const cent = (v: number) => Math.round(v * 100) / 100;
+  return { saldo: cent(entradas - saidas), entradas: cent(entradas), saidas: cent(saidas) };
+}
+
+export function formatarBRL(v: number): string {
+  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/** "2026-09" → "setembro de 2026", para agrupar o extrato por mês. */
+export function rotuloMes(iso: string): string {
+  const [ano, mes] = iso.split("-");
+  const nomes = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  return `${nomes[Number(mes) - 1] || ""} de ${ano}`;
 }
 
 /* Estatísticas zeradas, usadas ao criar jogador e ao estornar rodada. */

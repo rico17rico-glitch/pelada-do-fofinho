@@ -227,6 +227,34 @@ tbody tr:hover{background:var(--surface-2)}
 .marca:disabled{opacity:.5;cursor:default}
 @media (prefers-color-scheme: dark){.marca.tem b{color:var(--brand)}}
 
+/* ---------- caixa ---------- */
+.caixa-resumo{display:grid;grid-template-columns:minmax(240px,1.2fr) 1fr;gap:14px}
+.saldo{background:linear-gradient(168deg,#0A3163,#002146 60%,#00152F);color:#FFFBE8;border-radius:var(--radius);
+  padding:20px;display:flex;flex-direction:column;gap:3px;border:1px solid rgba(246,168,33,.45)}
+.saldo .eyebrow{color:rgba(255,251,232,.62)}
+.saldo strong{font-family:var(--f-display);font-size:clamp(32px,5vw,46px);line-height:1;color:var(--brand-soft);font-variant-numeric:tabular-nums}
+.saldo.negativo strong{color:#FF9A8C}
+.saldo .note{color:rgba(255,251,232,.5)}
+.fluxo{display:grid;gap:14px}
+.fluxo-item{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;
+  display:flex;flex-direction:column;gap:2px;box-shadow:var(--shadow);border-left-width:4px}
+.fluxo-item strong{font-family:var(--f-display);font-size:26px;line-height:1;font-variant-numeric:tabular-nums}
+.fluxo-item.entrada{border-left-color:var(--ok)}
+.fluxo-item.entrada strong{color:var(--ok)}
+.fluxo-item.saida{border-left-color:var(--bad)}
+.fluxo-item.saida strong{color:var(--bad)}
+.mes-cab{display:flex;align-items:baseline;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.mes-nome{font-family:var(--f-display);font-size:16px;text-transform:uppercase;letter-spacing:.5px}
+.mes-saldo{margin-left:auto;font-family:var(--f-data);font-weight:700;font-variant-numeric:tabular-nums;color:var(--ok)}
+.mes-saldo.negativo{color:var(--bad)}
+.seta{font-size:9px;margin-right:6px;vertical-align:middle}
+.seta.entrada{color:var(--ok)}
+.seta.saida{color:var(--bad)}
+td.valor{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+td.valor.entrada{color:var(--ok)}
+td.valor.saida{color:var(--bad)}
+@media(max-width:720px){.caixa-resumo{grid-template-columns:1fr}.fluxo{grid-template-columns:1fr 1fr}}
+
 .linha-tempo{display:flex;flex-direction:column;gap:2px}
 .lance-item{display:flex;align-items:center;gap:9px;padding:5px 3px;border-bottom:1px solid var(--line);font-size:13.5px}
 .lance-item:last-child{border-bottom:0}

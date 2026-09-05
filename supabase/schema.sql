@@ -73,6 +73,25 @@ create table if not exists rounds (
 
 create index if not exists rounds_data_idx on rounds (data desc);
 
+-- Papel de organizador: manda nas rodadas igual ao mestre.
+alter table players add column if not exists organizador boolean not null default false;
+
+-- ---------------------------------------------------------------------
+-- Caixa da pelada — lançamentos digitados na mão
+-- ---------------------------------------------------------------------
+create table if not exists caixa (
+  id         uuid primary key default gen_random_uuid(),
+  data       date not null default current_date,
+  descricao  text not null,
+  tipo       text not null default 'saida',   -- entrada | saida
+  valor      numeric(12,2) not null default 0,
+  categoria  text,
+  criado_por text,
+  criado_em  timestamptz not null default now()
+);
+
+create index if not exists caixa_data_idx on caixa (data desc);
+
 -- ---------------------------------------------------------------------
 -- Segurança
 -- O site inteiro conversa com o banco pelo servidor, usando a chave
@@ -82,3 +101,4 @@ create index if not exists rounds_data_idx on rounds (data desc);
 alter table config  enable row level security;
 alter table players enable row level security;
 alter table rounds  enable row level security;
+alter table caixa   enable row level security;

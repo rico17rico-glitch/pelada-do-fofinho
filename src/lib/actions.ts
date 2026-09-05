@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db, lerConfig, lerJogadores, lerRodada } from "./db";
+import { db, lerConfig, lerJogador, lerJogadores, lerRodada } from "./db";
 import { ehAdmin, gravarSessao, lerSessao, limparSessao } from "./session";
 import {
   ATTRS, AttrKey, Evento, Player, Pos, Round, STATS_ZERO, calcularPremiacao,
-  decorridoSeg, gerarPin, idCurto, ovr, precoUpgrade, sortearTimes, textoRegra,
-  timesSemCapitao, trocarNaEscalacao,
+  decorridoSeg, gerarPin, idCurto, ovr, permissoesDaRodada, precoUpgrade,
+  sortearTimes, textoRegra, TipoLancamento, timesSemCapitao, trocarNaEscalacao,
 } from "./domain";
 
 type Resposta = { ok: boolean; erro?: string; msg?: string };
@@ -23,6 +23,28 @@ async function exigirAdmin(): Promise<Resposta | null> {
   const s = lerSessao();
   if (!ehAdmin(s)) return erro("Só o mestre da pelada pode fazer isso.");
   return null;
+}
+
+/** Quem está usando o site agora: o mestre ou um jogador logado. */
+async function ator(): Promise<{ admin: boolean; jogador: Player | null }> {
+  const s = lerSessao();
+  if (!s) return { admin: false, jogador: null };
+  if (s.tipo === "admin") return { admin: true, jogador: null };
+  return { admin: false, jogador: await lerJogador(s.playerId) };
+}
+
+/** Mestre ou organizador: manda em tudo dentro das rodadas. */
+async function exigirOrganizador(): Promise<Resposta | null> {
+  const a = await ator();
+  if (a.admin || a.jogador?.organizador) return null;
+  return erro("Só o mestre ou um organizador pode fazer isso.");
+}
+
+/** Mestre, organizador ou capitão de um dos times: pode apitar as partidas. */
+async function exigirComando(r: Round): Promise<Resposta | null> {
+  const a = await ator();
+  if (permissoesDaRodada(r, a).gerirPartidas) return null;
+  return erro("Só o mestre, um organizador ou o capitão de um time pode mexer na partida.");
 }
 
 /* =====================================================================
@@ -64,11 +86,20 @@ export type FormJogador = {
   moedas?: number;
   pin?: string;
   ativo?: boolean;
+  organizador?: boolean;
 };
 
 export async function salvarJogador(form: FormJogador): Promise<Resposta> {
-  const negado = await exigirAdmin();
-  if (negado) return negado;
+  /* O mestre faz tudo. O organizador só cadastra avulso, para completar o time. */
+  const a = await ator();
+  const soAvulsoNovo = !form.id && form.tipo === "avulso";
+  if (!a.admin && !(a.jogador?.organizador && soAvulsoNovo)) {
+    return erro(
+      a.jogador?.organizador
+        ? "Organizador só cadastra jogador avulso. Fale com o mestre para mexer no elenco."
+        : "Só o mestre da pelada pode fazer isso."
+    );
+  }
 
   const nome = (form.nome || "").trim();
   if (!nome) return erro("Coloque o nome do jogador.");
@@ -78,6 +109,7 @@ export async function salvarJogador(form: FormJogador): Promise<Resposta> {
     const patch: Record<string, unknown> = {
       nome, pos: form.pos, alt, tipo: form.tipo,
       ativo: form.ativo !== false,
+      organizador: !!form.organizador,
       pin: (form.pin || "").trim(),
       moedas: Math.max(0, Number(form.moedas) || 0),
     };
@@ -177,7 +209,7 @@ export async function comprarAtributo(playerId: string, attr: AttrKey): Promise<
    Rodadas
    ===================================================================== */
 export async function criarRodada(data: string, nome: string): Promise<Resposta & { id?: string }> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const jogadores = await lerJogadores();
   const present = jogadores.filter((p) => p.ativo !== false && p.tipo !== "avulso").map((p) => p.id);
@@ -192,7 +224,7 @@ export async function criarRodada(data: string, nome: string): Promise<Resposta 
 }
 
 export async function excluirRodada(id: string): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const r = await lerRodada(id);
   if (r && r.status === "finalizada") return erro("Reabra a rodada antes de excluir, para os pontos voltarem.");
@@ -210,7 +242,7 @@ async function patchRodada(id: string, patch: Partial<Round>): Promise<Resposta>
 }
 
 export async function alternarPresenca(roundId: string, playerId: string): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
@@ -220,7 +252,7 @@ export async function alternarPresenca(roundId: string, playerId: string): Promi
 }
 
 export async function sortear(roundId: string, nTimes: number): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
@@ -236,13 +268,13 @@ export async function sortear(roundId: string, nTimes: number): Promise<Resposta
 }
 
 export async function limparTimes(roundId: string): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   return patchRodada(roundId, { teams: [], reservas: [], matches: [], stats: {}, campeao: null, premios: {} });
 }
 
 export async function trocarJogadores(roundId: string, k1: string, k2: string): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
@@ -254,7 +286,7 @@ export async function trocarJogadores(roundId: string, k1: string, k2: string): 
    Capitão e nome do time
    --------------------------------------------------------------------- */
 export async function definirCapitao(roundId: string, teamId: string, playerId: string | null): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
@@ -268,7 +300,7 @@ export async function definirCapitao(roundId: string, teamId: string, playerId: 
 }
 
 export async function renomearTime(roundId: string, teamId: string, nome: string): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const limpo = (nome || "").trim().slice(0, 40);
   if (!limpo) return erro("O time precisa de um nome.");
@@ -282,11 +314,11 @@ export async function renomearTime(roundId: string, teamId: string, nome: string
    Partidas: cronômetro e lances
    --------------------------------------------------------------------- */
 export async function adicionarConfronto(roundId: string, a: string, b: string): Promise<Resposta> {
-  const negado = await exigirAdmin();
-  if (negado) return negado;
   if (a === b) return erro("Escolha dois times diferentes.");
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
+  const negado = await exigirComando(r);
+  if (negado) return negado;
   const cfg = await lerConfig();
   const nova = {
     a, b,
@@ -306,10 +338,10 @@ async function comPartida(
   indice: number,
   fn: (m: Round["matches"][number], r: Round) => Round["matches"][number] | { erro: string }
 ): Promise<Resposta> {
-  const negado = await exigirAdmin();
-  if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
+  const negado = await exigirComando(r);
+  if (negado) return negado;
   const matches = (r.matches || []).slice();
   const alvo = matches[indice];
   if (!alvo) return erro("Confronto não encontrado.");
@@ -387,10 +419,10 @@ export async function removerLance(roundId: string, indice: number, eventoId: st
 }
 
 export async function removerConfronto(roundId: string, indice: number): Promise<Resposta> {
-  const negado = await exigirAdmin();
-  if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r || r.status === "finalizada") return erro("Rodada fechada.");
+  const negado = await exigirComando(r);
+  if (negado) return negado;
   const matches = (r.matches || []).slice();
   matches.splice(indice, 1);
   return patchRodada(roundId, { matches });
@@ -399,7 +431,7 @@ export async function removerConfronto(roundId: string, indice: number): Promise
 /* Fecha a rodada e credita os pontos. Guarda o que cada um ganhou,
    para que reabrir devolva exatamente a mesma coisa. */
 export async function finalizarRodada(roundId: string, campeaoManual: string | null): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r) return erro("Rodada não encontrada.");
@@ -443,7 +475,7 @@ export async function finalizarRodada(roundId: string, campeaoManual: string | n
 }
 
 export async function reabrirRodada(roundId: string): Promise<Resposta> {
-  const negado = await exigirAdmin();
+  const negado = await exigirOrganizador();
   if (negado) return negado;
   const r = await lerRodada(roundId);
   if (!r || r.status !== "finalizada") return erro("Essa rodada não está fechada.");
@@ -501,4 +533,58 @@ export async function salvarConfig(form: Record<string, any>): Promise<Resposta>
   if (error) return erro(error.message);
   atualizarTudo();
   return { ok: true, msg: "Ajustes salvos." };
+}
+
+/* =====================================================================
+   Caixa da pelada
+   ===================================================================== */
+export type FormLancamento = {
+  id?: string;
+  data: string;
+  descricao: string;
+  tipo: TipoLancamento;
+  valor: number;
+  categoria?: string | null;
+};
+
+export async function salvarLancamento(form: FormLancamento): Promise<Resposta> {
+  const negado = await exigirOrganizador();
+  if (negado) return negado;
+
+  const descricao = (form.descricao || "").trim();
+  if (!descricao) return erro("Escreva do que se trata o lançamento.");
+
+  const valor = Math.round((Number(form.valor) || 0) * 100) / 100;
+  if (valor <= 0) return erro("O valor precisa ser maior que zero.");
+  if (form.tipo !== "entrada" && form.tipo !== "saida") return erro("Escolha entrada ou saída.");
+
+  const a = await ator();
+  const corpo = {
+    data: form.data || new Date().toISOString().slice(0, 10),
+    descricao,
+    tipo: form.tipo,
+    valor,
+    categoria: (form.categoria || "").trim() || null,
+  };
+
+  if (form.id) {
+    const { error } = await db().from("caixa").update(corpo).eq("id", form.id);
+    if (error) return erro(error.message);
+  } else {
+    const { error } = await db()
+      .from("caixa")
+      .insert({ ...corpo, criado_por: a.admin ? "Mestre da pelada" : a.jogador?.nome || null });
+    if (error) return erro(error.message);
+  }
+  atualizarTudo();
+  return { ok: true, msg: form.id ? "Lançamento atualizado." : "Lançamento registrado." };
+}
+
+export async function excluirLancamento(id: string): Promise<Resposta> {
+  const negado = await exigirOrganizador();
+  if (negado) return negado;
+  const { error } = await db().from("caixa").delete().eq("id", id);
+  if (error) return erro(error.message);
+  atualizarTudo();
+  return { ok: true, msg: "Lançamento apagado." };
 }

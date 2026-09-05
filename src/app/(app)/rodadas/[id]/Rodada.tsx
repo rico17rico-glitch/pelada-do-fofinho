@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Config, Evento, Match, POS_LABEL, Player, Round, Team,
+  Config, Evento, Match, POS_LABEL, Permissoes, Player, Round, Team,
   decorridoSeg, formatarRelogio, formatarData, ovr, placar, statsDaRodada, tabelaRodada, timesSemCapitao,
 } from "@/lib/domain";
 import {
@@ -16,9 +16,9 @@ import {
 import { Confirmar, Modal, Quadra, SLOT_XY, Swatch, Toast, useToast } from "@/components/ui";
 
 export default function Rodada({
-  rodada, jogadores, cfg, admin, agoraServidor,
+  rodada, jogadores, cfg, perm, agoraServidor,
 }: {
-  rodada: Round; jogadores: Player[]; cfg: Config; admin: boolean; agoraServidor: string;
+  rodada: Round; jogadores: Player[]; cfg: Config; perm: Permissoes; agoraServidor: string;
 }) {
   const router = useRouter();
   const { msg, avisar } = useToast();
@@ -37,7 +37,9 @@ export default function Rodada({
   const [nomeNovo, setNomeNovo] = useState("");
 
   const aberta = rodada.status !== "finalizada";
-  const podeEditar = admin && aberta;
+  /* Mestre e organizadores mexem em tudo; capitão só apita as partidas. */
+  const podeEditar = perm.gerirRodada && aberta;
+  const podeApitar = perm.gerirPartidas && aberta;
   const times = rodada.teams || [];
   const partidas = rodada.matches || [];
   const porId = (id: string | null) => jogadores.find((p) => p.id === id) || null;
@@ -335,7 +337,8 @@ export default function Rodada({
                     indice={i}
                     aberto={abertaIdx === i}
                     onAbrir={() => setAbertaIdx(abertaIdx === i ? null : i)}
-                    {...{ rodada, times, cfg, podeEditar, pendente, agora, porId, rodar, avisar, setAbertaIdx }}
+                    {...{ rodada, times, cfg, pendente, agora, porId, rodar, avisar, setAbertaIdx }}
+                    podeEditar={podeApitar}
                   />
                 ))}
               </div>
@@ -343,7 +346,7 @@ export default function Rodada({
               <p className="note">Nenhum confronto lançado ainda.</p>
             )}
 
-            {podeEditar ? (
+            {podeApitar ? (
               <div className="row">
                 <select style={{ width: "auto" }} value={timeA || times[0]?.id || ""} onChange={(e) => setTimeA(e.target.value)}>
                   {times.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
@@ -441,7 +444,7 @@ export default function Rodada({
               </table>
             </div>
 
-            {admin ? (
+            {perm.gerirRodada ? (
               aberta ? (
                 <div className="row">
                   <label className="field" style={{ minWidth: 180 }}>

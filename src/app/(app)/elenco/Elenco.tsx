@@ -18,12 +18,14 @@ type Rascunho = {
   moedas: number;
   pin: string;
   ativo: boolean;
+  organizador: boolean;
 };
 
 function vazio(tipo: "mensalista" | "avulso" = "mensalista"): Rascunho {
   return {
     nome: "", pos: "ALA", alt: [], tipo, base: 65,
     atr: { fin: 65, vis: 65, def: 65, int: 65 }, moedas: 0, pin: "", ativo: true,
+    organizador: false,
   };
 }
 
@@ -32,6 +34,7 @@ function deJogador(p: Player): Rascunho {
     id: p.id, nome: p.nome, pos: p.pos, alt: p.alt || [], tipo: p.tipo, base: 65,
     atr: { fin: p.atr_fin, vis: p.atr_vis, def: p.atr_def, int: p.atr_int },
     moedas: p.moedas, pin: p.pin || "", ativo: p.ativo !== false,
+    organizador: !!p.organizador,
   };
 }
 
@@ -59,6 +62,7 @@ export default function Elenco({ jogadores, admin }: { jogadores: Player[]; admi
         moedas: rascunho.moedas,
         pin: rascunho.pin,
         ativo: rascunho.ativo,
+        organizador: rascunho.organizador,
       });
       if (!r.ok) return avisar(r.erro || "Não deu para salvar.");
       setRascunho(null);
@@ -153,6 +157,7 @@ export default function Elenco({ jogadores, admin }: { jogadores: Player[]; admi
                   <td className="l"><PosTag pos={p.pos} /></td>
                   <td className="l">
                     <span className="pill mute">{p.tipo === "avulso" ? "Avulso" : "Mensalista"}</span>
+                    {p.organizador ? <span className="pill ok" style={{ marginLeft: 5 }}>Organizador</span> : null}
                   </td>
                   <td><Ovr v={ovr(p)} /></td>
                   {ATTRS.map((a) => <td key={a.k}>{p[("atr_" + a.k) as "atr_fin"]}</td>)}
@@ -315,6 +320,18 @@ function FormJogador({
               onChange={(e) => set({ ativo: e.target.checked })}
             />
             <span>Ativo no elenco</span>
+          </label>
+          <label className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+            <input
+              type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={r.organizador}
+              onChange={(e) => set({ organizador: e.target.checked })}
+            />
+            <span>
+              Organizador
+              <span className="note" style={{ display: "block" }}>
+                Cria rodadas, sorteia, apita e fecha — tudo que o mestre faz dentro das rodadas.
+              </span>
+            </span>
           </label>
         </>
       )}

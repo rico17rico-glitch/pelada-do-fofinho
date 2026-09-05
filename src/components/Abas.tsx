@@ -8,6 +8,7 @@ const ABAS = [
   { href: "/rodadas", label: "Rodadas" },
   { href: "/elenco", label: "Elenco" },
   { href: "/loja", label: "Loja" },
+  { href: "/caixa", label: "Caixa" },
 ];
 
 export default function Abas({ admin }: { admin: boolean }) {
