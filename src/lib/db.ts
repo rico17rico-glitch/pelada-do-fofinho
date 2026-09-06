@@ -36,6 +36,7 @@ export const CONFIG_PADRAO: Config = {
   nome_pelada: "Pelada do Fofinho",
   duracao_min: 7,
   gols_limite: 2,
+  valor_avulso: 12,
 };
 
 export async function lerConfig(): Promise<Config> {

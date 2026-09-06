@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { db, lerConfig, lerJogador, lerJogadores, lerRodada } from "./db";
 import { ehAdmin, gravarSessao, lerSessao, limparSessao } from "./session";
 import {
-  ATTRS, AttrKey, Evento, Player, Pos, Round, STATS_ZERO, calcularPremiacao,
-  decorridoSeg, gerarPin, idCurto, ovr, permissoesDaRodada, precoUpgrade,
+  ATTRS, AttrKey, Evento, Pagamento, Player, Pos, Round, STATS_ZERO, calcularPremiacao,
+  decorridoSeg, formatarData, gerarPin, idCurto, ovr, permissoesDaRodada, precoUpgrade,
   sortearTimes, textoRegra, TipoLancamento, timesSemCapitao, trocarNaEscalacao,
 } from "./domain";
 
@@ -582,6 +582,88 @@ export async function salvarLancamento(form: FormLancamento): Promise<Resposta> 
   }
   atualizarTudo();
   return { ok: true, msg: form.id ? "Lançamento atualizado." : "Lançamento registrado." };
+}
+
+/* =====================================================================
+   Pagamento da diária, marcado dentro da rodada.
+   Marcar um avulso lança a entrada no caixa; desmarcar estorna.
+   Mensalista não passa por aqui: já está pago pela mensalidade.
+   ===================================================================== */
+export async function marcarPagamento(
+  roundId: string,
+  playerId: string,
+  pago: boolean
+): Promise<Resposta> {
+  const negado = await exigirOrganizador();
+  if (negado) return negado;
+
+  const r = await lerRodada(roundId);
+  if (!r) return erro("Rodada não encontrada.");
+  if (!(r.present || []).includes(playerId)) return erro("Esse jogador não veio nessa rodada.");
+
+  const jogador = await lerJogador(playerId);
+  if (!jogador) return erro("Jogador não encontrado.");
+  if (jogador.tipo !== "avulso") {
+    return erro("Mensalista já está pago pela mensalidade — não precisa marcar.");
+  }
+
+  const pagamentos: Record<string, Pagamento> = { ...(r.pagamentos || {}) };
+  const atual = pagamentos[playerId];
+
+  /* Desmarcar: apaga o lançamento que este pagamento criou. */
+  if (!pago) {
+    if (!atual) return OK;
+    if (atual.lancamentoId) {
+      const { error } = await db().from("caixa").delete().eq("id", atual.lancamentoId);
+      if (error) return erro(error.message);
+    }
+    delete pagamentos[playerId];
+    const resp = await patchRodada(roundId, { pagamentos } as Partial<Round>);
+    return resp.ok ? { ok: true, msg: `Pagamento do ${jogador.nome} desfeito.` } : resp;
+  }
+
+  if (atual) return OK; // já estava pago
+
+  const cfg = await lerConfig();
+  const valor = Math.round((Number(cfg.valor_avulso) || 0) * 100) / 100;
+  if (valor <= 0) return erro("Defina o valor da diária antes de marcar pagamento.");
+
+  const a = await ator();
+  const { data, error } = await db()
+    .from("caixa")
+    .insert({
+      data: (r.data || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+      descricao: `Diária de ${jogador.nome} · pelada de ${formatarData(r.data)}`,
+      tipo: "entrada",
+      valor,
+      categoria: "Diária de avulso",
+      criado_por: a.admin ? "Mestre da pelada" : a.jogador?.nome || null,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) return erro(error.message);
+
+  pagamentos[playerId] = {
+    valor,
+    lancamentoId: (data as { id?: string } | null)?.id || null,
+    em: new Date().toISOString(),
+  };
+  const resp = await patchRodada(roundId, { pagamentos } as Partial<Round>);
+  return resp.ok
+    ? { ok: true, msg: `${jogador.nome} pagou — entrou no caixa.` }
+    : resp;
+}
+
+/** Valor da diária do avulso, editado na própria tela da rodada. */
+export async function salvarValorAvulso(valor: number): Promise<Resposta> {
+  const negado = await exigirOrganizador();
+  if (negado) return negado;
+  const v = Math.round((Number(valor) || 0) * 100) / 100;
+  if (v <= 0) return erro("O valor precisa ser maior que zero.");
+  const { error } = await db().from("config").update({ valor_avulso: v }).eq("id", 1);
+  if (error) return erro(error.message);
+  atualizarTudo();
+  return { ok: true, msg: "Valor da diária atualizado." };
 }
 
 export async function excluirLancamento(id: string): Promise<Resposta> {

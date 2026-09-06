@@ -219,6 +219,21 @@ tbody tr:hover{background:var(--surface-2)}
 .relogio.correndo{border-color:var(--brand)}
 .relogio.estourado{background:var(--bad);color:#fff;border-color:var(--bad)}
 
+/* pagamentos da diária dentro da rodada */
+.lista-pag{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:8px}
+.pag-linha{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:11px;
+  padding:9px 12px;background:var(--surface);cursor:pointer}
+.pag-linha:hover{border-color:var(--line-strong)}
+.pag-linha input{width:20px;height:20px;flex:none;accent-color:var(--ok);cursor:pointer}
+.pag-linha.ok{border-color:var(--ok);background:var(--ok-bg)}
+.pag-linha.fixa{cursor:default;opacity:.72}
+.pag-linha.fixa input{cursor:default}
+.pag-nome{flex:1;min-width:0;font-family:var(--f-data);font-weight:700;font-size:15px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pag-valor{font-family:var(--f-data);font-weight:700;font-variant-numeric:tabular-nums;color:var(--ok)}
+.pag-linha:not(.ok) .pag-valor{color:var(--text-3)}
+.devendo{color:var(--bad)}
+
 /* sugestão de próximo confronto — quem vence continua */
 .proximo{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--brand);border-radius:var(--radius);
   background:linear-gradient(100deg,rgba(246,168,33,.14),transparent);padding:12px 14px}

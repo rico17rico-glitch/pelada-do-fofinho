@@ -44,6 +44,8 @@ export type Config = {
   nome_pelada: string;
   duracao_min: number;
   gols_limite: number;
+  /** Quanto cada avulso paga por dia de pelada. */
+  valor_avulso: number;
 };
 
 /** Texto curto da regra, montado a partir dos números. */
@@ -126,6 +128,16 @@ export type Round = {
   stats: Record<string, { g: number; a: number }>;
   campeao: string | null;
   premios: Record<string, Premio>;
+  /** Quem já acertou a diária. A chave existir significa pago. */
+  pagamentos?: Record<string, Pagamento>;
+};
+
+/** Um pagamento de diária lançado numa rodada. */
+export type Pagamento = {
+  valor: number;
+  /** Id do lançamento no caixa, para poder estornar ao desmarcar. */
+  lancamentoId: string | null;
+  em: string;
 };
 
 /* --------------------------------------------------------------------
@@ -263,6 +275,65 @@ export function proximoConfronto(round: Pick<Round, "teams" | "matches">): Suges
   const entra = fila[0];
   if (!entra) return null;
   return { a: fica, b: entra, fica, motivo };
+}
+
+/* --------------------------------------------------------------------
+   Pagamentos da rodada.
+   Mensalista já está pago pela mensalidade e não gera lançamento.
+   Avulso paga a diária do dia, e é isso que entra no caixa.
+   -------------------------------------------------------------------- */
+export type LinhaPagamento = {
+  jogador: Player;
+  avulso: boolean;
+  pago: boolean;
+  valor: number;
+};
+
+export type ResumoPagamentos = {
+  linhas: LinhaPagamento[];
+  avulsos: number;
+  pagos: number;
+  pendentes: number;
+  arrecadado: number;
+  aReceber: number;
+};
+
+export function pagamentosDaRodada(
+  round: Pick<Round, "present" | "pagamentos">,
+  jogadores: Player[],
+  valorPadrao: number
+): ResumoPagamentos {
+  const pagos = round.pagamentos || {};
+  const porId = new Map(jogadores.map((p) => [p.id, p]));
+
+  const linhas: LinhaPagamento[] = (round.present || [])
+    .map((id) => porId.get(id))
+    .filter((p): p is Player => !!p)
+    .map((p) => {
+      const avulso = p.tipo === "avulso";
+      const reg = pagos[p.id];
+      return {
+        jogador: p,
+        avulso,
+        pago: avulso ? !!reg : true,
+        valor: avulso ? (reg ? Number(reg.valor) || 0 : valorPadrao) : 0,
+      };
+    })
+    /* avulsos primeiro (é neles que se mexe), cada grupo em ordem alfabética */
+    .sort((a, b) =>
+      Number(b.avulso) - Number(a.avulso) || a.jogador.nome.localeCompare(b.jogador.nome)
+    );
+
+  const soAvulsos = linhas.filter((l) => l.avulso);
+  const cent = (v: number) => Math.round(v * 100) / 100;
+  return {
+    linhas,
+    avulsos: soAvulsos.length,
+    pagos: soAvulsos.filter((l) => l.pago).length,
+    pendentes: soAvulsos.filter((l) => !l.pago).length,
+    arrecadado: cent(soAvulsos.filter((l) => l.pago).reduce((s, l) => s + l.valor, 0)),
+    aReceber: cent(soAvulsos.filter((l) => !l.pago).reduce((s, l) => s + l.valor, 0)),
+  };
 }
 
 export function tabelaRodada(round: Pick<Round, "teams" | "matches">): LinhaTabela[] {

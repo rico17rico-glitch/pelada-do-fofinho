@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Config, Evento, Match, POS_LABEL, Permissoes, Player, Round, Team,
-  decorridoSeg, formatarRelogio, formatarData, ovr, placar, proximoConfronto, statsDaRodada,
-  tabelaRodada, timesSemCapitao,
+  decorridoSeg, formatarBRL, formatarRelogio, formatarData, ovr, pagamentosDaRodada, placar,
+  proximoConfronto, statsDaRodada, tabelaRodada, timesSemCapitao,
 } from "@/lib/domain";
 import {
   adicionarConfronto, alternarPresenca, definirCapitao, encerrarPartida, finalizarRodada,
-  iniciarPartida, limparTimes, pausarPartida, reabrirPartida, reabrirRodada, registrarLance,
-  removerConfronto, removerLance, renomearTime, salvarJogador, sortear, trocarJogadores,
-  zerarCronometro,
+  iniciarPartida, limparTimes, marcarPagamento, pausarPartida, reabrirPartida, reabrirRodada,
+  registrarLance, removerConfronto, removerLance, renomearTime, salvarJogador, salvarValorAvulso,
+  sortear, trocarJogadores, zerarCronometro,
 } from "@/lib/actions";
 import { Confirmar, Modal, Quadra, SLOT_XY, Swatch, Toast, useToast } from "@/components/ui";
 
@@ -36,6 +36,8 @@ export default function Rodada({
   const [timeB, setTimeB] = useState("");
   const [renomeando, setRenomeando] = useState<string | null>(null);
   const [nomeNovo, setNomeNovo] = useState("");
+  const [editandoValor, setEditandoValor] = useState(false);
+  const [valorAvulso, setValorAvulso] = useState(String(cfg.valor_avulso ?? 12));
 
   const aberta = rodada.status !== "finalizada";
   /* Mestre e organizadores mexem em tudo; capitão só apita as partidas. */
@@ -50,6 +52,12 @@ export default function Rodada({
   /* Quem vence continua: o app já sugere o próximo confronto. */
   const sugestao = aberta ? proximoConfronto(rodada) : null;
   const nomeTime = (id: string) => times.find((t) => t.id === id)?.nome || "?";
+  const pag = pagamentosDaRodada(rodada, jogadores, Number(cfg.valor_avulso ?? 12));
+
+  function salvarDiaria() {
+    const v = Number(String(valorAvulso).replace(".", "").replace(",", "."));
+    rodar(() => salvarValorAvulso(v)).then((ok) => { if (ok) setEditandoValor(false); });
+  }
 
   /* ---- relógio: o servidor manda a hora dele para o navegador se alinhar ---- */
   const [offset] = useState(() => Date.now() - Date.parse(agoraServidor));
@@ -406,6 +414,86 @@ export default function Rodada({
                 </div>
               </>
             ) : null}
+          </div>
+        ) : null}
+
+        {/* ---------------- pagamentos da diária ---------------- */}
+        {perm.gerirRodada && pag.linhas.length ? (
+          <div className="card pad stack">
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              <div className="sect-title grow">
+                Pagamentos
+                <span className="pill mute">
+                  {pag.pagos} de {pag.avulsos} avulsos
+                </span>
+              </div>
+              {editandoValor ? (
+                <div className="row" style={{ gap: 6 }}>
+                  <span className="note">Diária R$</span>
+                  <input
+                    style={{ width: 88 }}
+                    value={valorAvulso}
+                    onChange={(e) => setValorAvulso(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === "Enter") salvarDiaria(); }}
+                  />
+                  <button className="btn sm primary" disabled={pendente} onClick={salvarDiaria}>
+                    Salvar
+                  </button>
+                  <button
+                    className="btn sm ghost"
+                    onClick={() => { setEditandoValor(false); setValorAvulso(String(cfg.valor_avulso ?? 12)); }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button className="btn sm ghost" onClick={() => setEditandoValor(true)}>
+                  Diária {formatarBRL(Number(cfg.valor_avulso ?? 12))} · editar
+                </button>
+              )}
+            </div>
+
+            <div className="lista-pag">
+              {pag.linhas.map((l) => (
+                <label
+                  key={l.jogador.id}
+                  className={"pag-linha" + (l.avulso && l.pago ? " ok" : "") + (l.avulso ? "" : " fixa")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={l.pago}
+                    disabled={!l.avulso || pendente}
+                    onChange={(e) =>
+                      rodar(() => marcarPagamento(rodada.id, l.jogador.id, e.target.checked))
+                    }
+                  />
+                  <span className="pag-nome">{l.jogador.nome}</span>
+                  {l.avulso ? (
+                    <span className="pag-valor">{formatarBRL(l.valor)}</span>
+                  ) : (
+                    <span className="note">mensalista</span>
+                  )}
+                </label>
+              ))}
+            </div>
+
+            <div className="legend">
+              <span>Arrecadado nessa rodada: <b>{formatarBRL(pag.arrecadado)}</b></span>
+              {pag.pendentes ? (
+                <span>
+                  Falta receber: <b className="devendo">{formatarBRL(pag.aReceber)}</b> ({pag.pendentes})
+                </span>
+              ) : pag.avulsos ? (
+                <span>Todo mundo acertou.</span>
+              ) : (
+                <span>Só mensalista nessa rodada.</span>
+              )}
+            </div>
+            <p className="note">
+              Marcar um avulso lança a diária como entrada no caixa. Desmarcar apaga esse
+              lançamento. Mensalista já entra pago, pela mensalidade.
+            </p>
           </div>
         ) : null}
 
