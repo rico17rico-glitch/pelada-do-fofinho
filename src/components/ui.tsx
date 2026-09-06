@@ -90,16 +90,27 @@ export function Modal({
 
 /** Confirmação própria — nada de janela do navegador. */
 export function Confirmar({
-  titulo, texto, labelOk, onOk, onCancelar,
-}: { titulo: string; texto: string; labelOk: string; onOk: () => void; onCancelar: () => void }) {
+  titulo, texto, labelOk, onOk, onCancelar, perigo,
+}: {
+  titulo: string; texto: string; labelOk: string;
+  onOk: () => void; onCancelar: () => void;
+  /** Ação sem volta: o botão fica vermelho e o foco começa no Cancelar. */
+  perigo?: boolean;
+}) {
   return (
     <Modal
       titulo={titulo}
       onFechar={onCancelar}
       rodape={
         <>
-          <button className="btn ghost" onClick={onCancelar}>Cancelar</button>
-          <button className="btn primary" onClick={onOk} autoFocus>{labelOk}</button>
+          <button className="btn ghost" onClick={onCancelar} autoFocus={perigo}>Cancelar</button>
+          <button
+            className={perigo ? "btn perigo" : "btn primary"}
+            onClick={onOk}
+            autoFocus={!perigo}
+          >
+            {labelOk}
+          </button>
         </>
       }
     >

@@ -14,7 +14,7 @@ import {
   abrirDraft, alternarParticipante, desfazerEscolha, encerrarCopa, encerrarJogo,
   escolherNoDraft, gerarJogoFinal, iniciarFaseDeGrupos, iniciarJogo, pausarJogo,
   reabrirJogo, registrarLanceCopa, registrarPenaltis, removerLanceCopa, renomearTimeCopa,
-  sortearMataMata, zerarJogo,
+  sortearMataMata, zerarJogo, excluirCopa,
 } from "@/lib/actions-copa";
 import { Avatar, Confirmar, Modal, Swatch, Toast, useToast } from "@/components/ui";
 import Chaveamento from "./Chaveamento";
@@ -31,7 +31,7 @@ export default function Copa({
   const [capitaes, setCapitaes] = useState<string[]>([]);
   const [renomeando, setRenomeando] = useState<string | null>(null);
   const [nomeNovo, setNomeNovo] = useState("");
-  const [confirmando, setConfirmando] = useState<null | "encerrar">(null);
+  const [confirmando, setConfirmando] = useState<null | "encerrar" | "excluir">(null);
   const [jogoAberto, setJogoAberto] = useState<string | null>(null);
 
   const porId = (id: string | null) => jogadores.find((p) => p.id === id) || null;
@@ -97,6 +97,11 @@ export default function Copa({
         <span className={"pill " + (copa.status === "encerrada" ? "ok" : "warn")}>
           {ROTULO_STATUS[copa.status]}
         </span>
+        {organizador ? (
+          <button className="btn sm ghost danger" onClick={() => setConfirmando("excluir")}>
+            Excluir edição
+          </button>
+        ) : null}
         <Link className="btn sm ghost" href="/copa">Voltar</Link>
       </div>
 
@@ -393,6 +398,23 @@ export default function Copa({
           </div>
         ) : null}
       </div>
+
+      {confirmando === "excluir" ? (
+        <Confirmar
+          titulo={`Excluir a ${copa.edicao ? copa.edicao + "ª edição" : "edição"}?`}
+          texto={
+            "Some com os times, os jogos e os gols dessa edição, sem volta. A galeria de " +
+            "títulos e o ranking da pelada não mudam — nada da Copa conta lá."
+          }
+          labelOk="Excluir a edição"
+          perigo
+          onOk={() => {
+            setConfirmando(null);
+            rodar(() => excluirCopa(copa.id)).then((ok) => { if (ok) router.push("/copa"); });
+          }}
+          onCancelar={() => setConfirmando(null)}
+        />
+      ) : null}
 
       {confirmando === "encerrar" ? (
         <Confirmar

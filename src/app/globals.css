@@ -88,6 +88,8 @@ main{padding:22px 0 60px}
 .btn.dark:hover{background:var(--navy-lift)}
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.perigo{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.perigo:hover{filter:brightness(1.08);background:var(--bad)}
 .btn.sm{padding:5px 10px;font-size:12.5px}
 .btn.block{width:100%;justify-content:center}
 .btn:disabled{opacity:.45;cursor:not-allowed}
