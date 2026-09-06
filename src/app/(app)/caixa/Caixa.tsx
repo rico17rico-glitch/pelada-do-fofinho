@@ -135,12 +135,12 @@ export default function Caixa({
                   <span className={"mes-saldo" + (r.saldo < 0 ? " negativo" : "")}>{formatarBRL(r.saldo)}</span>
                 </div>
                 <div className="tablewrap">
-                  <table style={{ minWidth: 560 }}>
+                  <table className="tb-compacta">
                     <thead>
                       <tr>
                         <th className="l" style={{ width: 74 }}>Data</th>
                         <th className="l">Descrição</th>
-                        <th className="l">Categoria</th>
+                        <th className="l opt">Categoria</th>
                         <th>Valor</th>
                         {podeLancar ? <th className="l" style={{ width: 90 }} /> : null}
                       </tr>
@@ -152,9 +152,9 @@ export default function Caixa({
                           <td className="l">
                             <span className={"seta " + l.tipo}>{l.tipo === "entrada" ? "▲" : "▼"}</span>
                             {l.descricao}
-                            {l.criado_por ? <span className="note"> · {l.criado_por}</span> : null}
+                            {l.criado_por ? <span className="note autor"> · {l.criado_por}</span> : null}
                           </td>
-                          <td className="l">
+                          <td className="l opt">
                             {l.categoria ? <span className="pill mute">{l.categoria}</span> : null}
                           </td>
                           <td className={"valor " + l.tipo}>

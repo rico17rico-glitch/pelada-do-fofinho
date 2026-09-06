@@ -40,10 +40,7 @@ export default async function PaginaJogador({ params }: { params: { id: string }
         <Link className="btn sm ghost" href="/ranking">Voltar ao ranking</Link>
       </div>
 
-      <div
-        className="grid2"
-        style={{ gridTemplateColumns: "minmax(260px,340px) 1fr", alignItems: "start" }}
-      >
+      <div className="perfil-grid">
         <div><CardJogador p={p} /></div>
 
         <div className="stack">

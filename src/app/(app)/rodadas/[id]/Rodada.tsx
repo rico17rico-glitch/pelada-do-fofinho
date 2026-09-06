@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Config, Evento, Match, POS_LABEL, Permissoes, Player, Round, Team,
-  decorridoSeg, formatarRelogio, formatarData, ovr, placar, statsDaRodada, tabelaRodada, timesSemCapitao,
+  decorridoSeg, formatarRelogio, formatarData, ovr, placar, proximoConfronto, statsDaRodada,
+  tabelaRodada, timesSemCapitao,
 } from "@/lib/domain";
 import {
   adicionarConfronto, alternarPresenca, definirCapitao, encerrarPartida, finalizarRodada,
@@ -46,6 +47,9 @@ export default function Rodada({
   const tabela = tabelaRodada(rodada);
   const semCapitao = timesSemCapitao(rodada);
   const totais = statsDaRodada(rodada);
+  /* Quem vence continua: o app já sugere o próximo confronto. */
+  const sugestao = aberta ? proximoConfronto(rodada) : null;
+  const nomeTime = (id: string) => times.find((t) => t.id === id)?.nome || "?";
 
   /* ---- relógio: o servidor manda a hora dele para o navegador se alinhar ---- */
   const [offset] = useState(() => Date.now() - Date.parse(agoraServidor));
@@ -351,25 +355,56 @@ export default function Rodada({
             )}
 
             {podeApitar ? (
-              <div className="row">
-                <select style={{ width: "auto" }} value={timeA || times[0]?.id || ""} onChange={(e) => setTimeA(e.target.value)}>
-                  {times.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                </select>
-                <span className="note">×</span>
-                <select style={{ width: "auto" }} value={timeB || times[1]?.id || ""} onChange={(e) => setTimeB(e.target.value)}>
-                  {times.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                </select>
-                <button
-                  className="btn sm primary"
-                  disabled={pendente}
-                  onClick={() =>
-                    rodar(() => adicionarConfronto(rodada.id, timeA || times[0]?.id, timeB || times[1]?.id))
-                      .then((ok) => { if (ok) setAbertaIdx(partidas.length); })
-                  }
-                >
-                  Adicionar confronto
-                </button>
-              </div>
+              <>
+                {sugestao ? (
+                  <div className="proximo">
+                    <div className="proximo-txt">
+                      <span className="eyebrow">Próximo confronto</span>
+                      <strong>
+                        <Swatch hex={times.find((t) => t.id === sugestao.a)?.hex || "#888"} />
+                        {nomeTime(sugestao.a)} <span className="x">×</span>{" "}
+                        <Swatch hex={times.find((t) => t.id === sugestao.b)?.hex || "#888"} />
+                        {nomeTime(sugestao.b)}
+                      </strong>
+                      <span className="note">{sugestao.motivo}</span>
+                    </div>
+                    <button
+                      className="btn primary"
+                      disabled={pendente}
+                      onClick={() =>
+                        rodar(() => adicionarConfronto(rodada.id, sugestao.a, sugestao.b))
+                          .then((ok) => { if (ok) setAbertaIdx(partidas.length); })
+                      }
+                    >
+                      Começar
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="row">
+                  <span className="note">Montar na mão:</span>
+                  <select style={{ width: "auto" }} value={timeA || sugestao?.a || times[0]?.id || ""} onChange={(e) => setTimeA(e.target.value)}>
+                    {times.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                  </select>
+                  <span className="note">×</span>
+                  <select style={{ width: "auto" }} value={timeB || sugestao?.b || times[1]?.id || ""} onChange={(e) => setTimeB(e.target.value)}>
+                    {times.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                  </select>
+                  <button
+                    className="btn sm"
+                    disabled={pendente}
+                    onClick={() =>
+                      rodar(() => adicionarConfronto(
+                        rodada.id,
+                        timeA || sugestao?.a || times[0]?.id,
+                        timeB || sugestao?.b || times[1]?.id,
+                      )).then((ok) => { if (ok) setAbertaIdx(partidas.length); })
+                    }
+                  >
+                    Adicionar confronto
+                  </button>
+                </div>
+              </>
             ) : null}
           </div>
         ) : null}

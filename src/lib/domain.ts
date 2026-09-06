@@ -201,6 +201,70 @@ export function statsDaRodada(round: Pick<Round, "matches" | "stats">): Record<s
   return temLances ? out : (round.stats || {});
 }
 
+/* --------------------------------------------------------------------
+   Quem vence continua.
+   O vencedor fica na quadra e enfrenta quem está descansando há mais tempo.
+   No empate sai quem já estava na quadra (jogou também o confronto anterior)
+   e o desafiante fica. Só olha para confrontos já encerrados.
+   -------------------------------------------------------------------- */
+export type Sugestao = { a: string; b: string; fica: string; motivo: string };
+
+/** Quem venceu a partida, ou null se empatou / ainda não acabou. */
+export function vencedorDaPartida(m: Match): string | null {
+  if (m.status && m.status !== "encerrada") return null;
+  const ga = placar(m, "a"), gb = placar(m, "b");
+  if (ga === gb) return null;
+  return ga > gb ? m.a : m.b;
+}
+
+export function proximoConfronto(round: Pick<Round, "teams" | "matches">): Sugestao | null {
+  const times = (round.teams || []).map((t) => t.id);
+  if (times.length < 2) return null;
+
+  const jogos = (round.matches || []).filter((m) => (m.status || "encerrada") === "encerrada");
+  if (!jogos.length) return { a: times[0], b: times[1], fica: times[0], motivo: "Primeiro confronto do dia." };
+
+  /* Nenhum confronto pode ser sugerido enquanto um jogo estiver em aberto. */
+  const emAberto = (round.matches || []).some((m) => m.status && m.status !== "encerrada");
+  if (emAberto) return null;
+
+  const ultimo = jogos[jogos.length - 1];
+  const anterior = jogos.length > 1 ? jogos[jogos.length - 2] : null;
+  if (times.length < 3) return null;
+
+  const venceu = vencedorDaPartida(ultimo);
+  let fica: string;
+  let motivo: string;
+
+  if (venceu) {
+    fica = venceu;
+    motivo = "Venceu o último confronto e continua na quadra.";
+  } else {
+    /* Empate: sai quem estava na quadra há mais tempo. */
+    const veterano =
+      anterior && (anterior.a === ultimo.a || anterior.b === ultimo.a) ? ultimo.a
+      : anterior && (anterior.a === ultimo.b || anterior.b === ultimo.b) ? ultimo.b
+      : ultimo.a;
+    fica = veterano === ultimo.a ? ultimo.b : ultimo.a;
+    motivo = "Empate: sai quem estava na quadra há mais tempo.";
+  }
+
+  /* Entra quem está parado há mais tempo: menos jogos, depois quem jogou por último. */
+  const jogosDe = (id: string) => jogos.filter((m) => m.a === id || m.b === id).length;
+  const ultimaVez = (id: string) => {
+    for (let i = jogos.length - 1; i >= 0; i--) if (jogos[i].a === id || jogos[i].b === id) return i;
+    return -1;
+  };
+  const candidatos = times.filter((id) => id !== fica && id !== ultimo.a && id !== ultimo.b);
+  const fila = (candidatos.length ? candidatos : times.filter((id) => id !== fica))
+    .slice()
+    .sort((x, y) => jogosDe(x) - jogosDe(y) || ultimaVez(x) - ultimaVez(y));
+
+  const entra = fila[0];
+  if (!entra) return null;
+  return { a: fica, b: entra, fica, motivo };
+}
+
 export function tabelaRodada(round: Pick<Round, "teams" | "matches">): LinhaTabela[] {
   const t: Record<string, LinhaTabela> = {};
   (round.teams || []).forEach((tm) => {
