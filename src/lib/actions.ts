@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db, lerConfig, lerJogador, lerJogadores, lerRodada } from "./db";
 import { ehAdmin, gravarSessao, lerSessao, limparSessao } from "./session";
 import {
-  ATTRS, AttrKey, Evento, Pagamento, Player, Pos, Round, STATS_ZERO, calcularPremiacao,
+  ATTRS, AttrKey, Evento, Pagamento, Player, Pos, POSITIONS, Round, STATS_ZERO, calcularPremiacao,
   decorridoSeg, formatarData, gerarPin, idCurto, ovr, permissoesDaRodada, precoUpgrade,
   sortearTimes, textoRegra, TipoLancamento, timesSemCapitao, trocarNaEscalacao,
 } from "./domain";
@@ -673,6 +673,29 @@ export async function excluirLancamento(id: string): Promise<Resposta> {
   if (error) return erro(error.message);
   atualizarTudo();
   return { ok: true, msg: "Lançamento apagado." };
+}
+
+/* =====================================================================
+   Posição: o jogador mexe na própria; o mestre mexe na de qualquer um
+   ===================================================================== */
+export async function salvarPosicao(
+  playerId: string,
+  pos: Pos,
+  alt: Pos[]
+): Promise<Resposta> {
+  const a = await ator();
+  if (!a.admin && a.jogador?.id !== playerId) {
+    return erro("Cada um muda só a própria posição.");
+  }
+  if (!POSITIONS.includes(pos)) return erro("Posição inválida.");
+
+  /* a alternativa não repete a principal e não aceita valor inventado */
+  const limpas = Array.from(new Set(alt)).filter((x) => POSITIONS.includes(x) && x !== pos);
+
+  const { error } = await db().from("players").update({ pos, alt: limpas }).eq("id", playerId);
+  if (error) return erro(error.message);
+  atualizarTudo();
+  return { ok: true, msg: "Posição atualizada." };
 }
 
 /* =====================================================================

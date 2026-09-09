@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { lerJogador, lerRodadas } from "@/lib/db";
+import { lerCopas, lerJogador, lerRodadas } from "@/lib/db";
 import { ehAdmin, lerSessao } from "@/lib/session";
 import { formatarData, STATS_ZERO } from "@/lib/domain";
-import { CardJogador } from "@/components/ui";
+import { campanhaNaCopa } from "@/lib/copa";
+import { CardJogador, Swatch } from "@/components/ui";
 import TrocarPin from "./TrocarPin";
 import TrocarFoto from "./TrocarFoto";
+import TrocarPosicao from "./TrocarPosicao";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,9 @@ export default async function PaginaJogador({ params }: { params: { id: string }
     .filter((r) => r.status === "finalizada" && (r.premios || {})[p.id])
     .slice(0, 10);
 
+  /* Copa Fofo entra como história à parte: não conta ponto nem overall. */
+  const copa = campanhaNaCopa(await lerCopas(), { id: p.id, nome: p.nome });
+
   return (
     <>
       <div className="page-head">
@@ -36,6 +41,9 @@ export default async function PaginaJogador({ params }: { params: { id: string }
         </div>
         <div className="grow" />
         {podeTrocarFoto ? <TrocarFoto playerId={p.id} temFoto={!!p.foto_url} /> : null}
+        {souEu || admin ? (
+          <TrocarPosicao playerId={p.id} pos={p.pos} alt={p.alt || []} />
+        ) : null}
         {souEu ? <TrocarPin /> : null}
         <Link className="btn sm ghost" href="/ranking">Voltar ao ranking</Link>
       </div>
@@ -93,6 +101,53 @@ export default async function PaginaJogador({ params }: { params: { id: string }
                   </tbody>
                 </table>
               </div>
+            </div>
+          ) : null}
+
+
+          {copa.disputadas ? (
+            <div className="card pad">
+              <div className="row" style={{ alignItems: "center", marginBottom: 10 }}>
+                <div className="sect-title grow">Copa Fofo</div>
+                {copa.titulos ? (
+                  <span className="pill ok">
+                    {copa.titulos} {copa.titulos === 1 ? "título" : "títulos"}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="statgrid" style={{ marginBottom: 12 }}>
+                <div><b>{copa.disputadas}</b><span>Edições</span></div>
+                <div><b>{copa.jogos}</b><span>Jogos</span></div>
+                <div><b>{copa.gols}</b><span>Gols</span></div>
+                <div><b>{copa.assist}</b><span>Assist.</span></div>
+              </div>
+
+              <div className="stack" style={{ gap: 8 }}>
+                {copa.edicoes.map((e) => (
+                  <div key={e.copaId} className={"copa-linha" + (e.campeao ? " campea" : "")}>
+                    <span className="copa-ed">{e.edicao ? `${e.edicao}ª` : "—"}</span>
+                    <div className="copa-meio">
+                      <span className="copa-hist-nome">
+                        {e.hex ? <Swatch hex={e.hex} /> : null}
+                        {e.time || e.nome}
+                      </span>
+                      <span className="note">
+                        {e.soRegistro
+                          ? "edição antiga, sem números registrados"
+                          : `${e.jogos} ${e.jogos === 1 ? "jogo" : "jogos"} · ${e.gols} ${e.gols === 1 ? "gol" : "gols"} · ${e.assist} assist.`}
+                      </span>
+                    </div>
+                    <span className={"pill " + (e.campeao ? "ok" : e.resultado === "Em andamento" ? "warn" : "mute")}>
+                      {e.campeao ? "🏆 Campeão" : e.resultado}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="note" style={{ marginTop: 10 }}>
+                Números da Copa. Não entram no ranking nem na carteira da pelada.
+              </p>
             </div>
           ) : null}
 

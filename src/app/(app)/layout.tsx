@@ -48,7 +48,7 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <Abas admin={admin} />
+      <Abas admin={admin} meuId={eu?.id || null} />
 
       <main>
         <div className="wrap">{children}</div>

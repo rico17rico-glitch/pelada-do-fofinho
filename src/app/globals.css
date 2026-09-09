@@ -221,6 +221,25 @@ tbody tr:hover{background:var(--surface-2)}
 .relogio.correndo{border-color:var(--brand)}
 .relogio.estourado{background:var(--bad);color:#fff;border-color:var(--bad)}
 
+/* campanha na Copa Fofo dentro do perfil */
+.copa-linha{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;
+  padding:10px 13px;background:var(--surface)}
+.copa-linha.campea{border-color:var(--brand);background:linear-gradient(100deg,rgba(246,168,33,.13),transparent)}
+.copa-ed{font-family:var(--f-display);font-size:24px;color:var(--text-3);min-width:42px;
+  font-variant-numeric:tabular-nums}
+.copa-linha.campea .copa-ed{color:var(--brand-deep)}
+.copa-meio{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.copa-hist-nome{font-family:var(--f-data);font-weight:700;font-size:15px;display:flex;align-items:center;gap:6px;
+  min-width:0;overflow-wrap:break-word}
+@media(max-width:560px){
+  /* no celular vira grade: número à esquerda, texto e etiqueta empilhados */
+  .copa-linha{display:grid;grid-template-columns:auto minmax(0,1fr);
+    grid-template-areas:"ed meio" "ed etiqueta";column-gap:12px;row-gap:7px;align-items:center}
+  .copa-ed{grid-area:ed}
+  .copa-meio{grid-area:meio}
+  .copa-linha > .pill{grid-area:etiqueta;justify-self:start}
+}
+
 /* pagamentos da diária dentro da rodada */
 .lista-pag{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:8px}
 .pag-linha{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:11px;

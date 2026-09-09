@@ -11,9 +11,15 @@ const ABAS = [
   { href: "/caixa", label: "Caixa" },
 ];
 
-export default function Abas({ admin }: { admin: boolean }) {
+export default function Abas({ admin, meuId }: { admin: boolean; meuId?: string | null }) {
   const caminho = usePathname() || "";
-  const itens = admin ? [...ABAS, { href: "/ajustes", label: "Ajustes" }] : ABAS;
+  /* "Meu perfil" primeiro: é o que o jogador procura, e antes só dava para
+     chegar lá clicando no próprio nome lá em cima, que ninguém achava. */
+  const itens = [
+    ...(meuId ? [{ href: `/jogador/${meuId}`, label: "Meu perfil" }] : []),
+    ...ABAS,
+    ...(admin ? [{ href: "/ajustes", label: "Ajustes" }] : []),
+  ];
 
   return (
     <nav className="tabsbar">

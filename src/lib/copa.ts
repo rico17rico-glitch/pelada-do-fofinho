@@ -308,6 +308,102 @@ export function galeriaDeTitulos(copas: Copa[]): LinhaTitulos[] {
   );
 }
 
+/* ---------------------------------------------------------------------
+   Campanha de um jogador na Copa, edição por edição.
+   Nada disso entra no ranking nem na carteira da pelada — é história à parte.
+   --------------------------------------------------------------------- */
+export type CampanhaEdicao = {
+  copaId: string;
+  edicao: number | null;
+  nome: string;
+  data: string;
+  time: string | null;
+  hex: string | null;
+  resultado: "Campeão" | "Vice" | "Semifinal" | "Fase de grupos" | "Em andamento";
+  campeao: boolean;
+  gols: number;
+  assist: number;
+  jogos: number;
+  /** Edição antiga, registrada só pelo nome do campeão — sem números. */
+  soRegistro: boolean;
+};
+
+export type CampanhaCopa = {
+  edicoes: CampanhaEdicao[];
+  titulos: number;
+  disputadas: number;
+  gols: number;
+  assist: number;
+  jogos: number;
+};
+
+/** Casa por id quando existe; nas edições antigas, pelo nome. */
+function ehEsseJogador(c: CopaCampeao, playerId: string, nome: string): boolean {
+  if (c.playerId) return c.playerId === playerId;
+  return c.nome.trim().toLowerCase() === nome.trim().toLowerCase();
+}
+
+export function campanhaNaCopa(
+  copas: Copa[],
+  jogador: { id: string; nome: string }
+): CampanhaCopa {
+  const edicoes: CampanhaEdicao[] = [];
+
+  for (const copa of copas) {
+    const tm = timeDoJogador(copa, jogador.id);
+    const ganhou = (copa.campeoes || []).some((c) => ehEsseJogador(c, jogador.id, jogador.nome));
+    if (!tm && !ganhou) continue;
+
+    const stats = tm ? (estatisticasDaCopa(copa)[jogador.id] || { gols: 0, assist: 0 }) : { gols: 0, assist: 0 };
+    const meusJogos = tm
+      ? (copa.jogos || []).filter(
+          (j) => (j.a === tm.id || j.b === tm.id) && j.status === "encerrada"
+        )
+      : [];
+
+    let resultado: CampanhaEdicao["resultado"] = "Fase de grupos";
+    if (ganhou || (tm && (copa.campeao || campeaoDaCopa(copa)) === tm.id)) {
+      resultado = "Campeão";
+    } else if (tm) {
+      const final = (copa.jogos || []).find((j) => j.fase === "final");
+      const jogouFinal = !!final && (final.a === tm.id || final.b === tm.id);
+      const jogouSemi = (copa.jogos || []).some(
+        (j) => j.fase === "semi" && (j.a === tm.id || j.b === tm.id)
+      );
+      if (copa.status !== "encerrada" && !copa.campeao) resultado = "Em andamento";
+      else if (jogouFinal) resultado = "Vice";
+      else if (jogouSemi) resultado = "Semifinal";
+      else resultado = "Fase de grupos";
+    }
+
+    edicoes.push({
+      copaId: copa.id,
+      edicao: copa.edicao,
+      nome: copa.nome,
+      data: copa.data,
+      time: tm?.nome || null,
+      hex: tm?.hex || null,
+      resultado,
+      campeao: resultado === "Campeão",
+      gols: stats.gols,
+      assist: stats.assist,
+      jogos: meusJogos.length,
+      soRegistro: !tm,
+    });
+  }
+
+  edicoes.sort((a, b) => (b.edicao || 0) - (a.edicao || 0) || b.data.localeCompare(a.data));
+
+  return {
+    edicoes,
+    titulos: edicoes.filter((e) => e.campeao).length,
+    disputadas: edicoes.length,
+    gols: edicoes.reduce((s, e) => s + e.gols, 0),
+    assist: edicoes.reduce((s, e) => s + e.assist, 0),
+    jogos: edicoes.reduce((s, e) => s + e.jogos, 0),
+  };
+}
+
 export function tempoDoJogo(j: CopaJogo, agoraMs: number): number {
   return decorridoSeg(
     { a: j.a, b: j.b, acumuladoSeg: j.acumuladoSeg, rodando: j.rodando, iniciadoEm: j.iniciadoEm },
