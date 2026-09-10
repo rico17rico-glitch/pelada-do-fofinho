@@ -8,7 +8,7 @@ import {
   Copa as TipoCopa, CopaJogo, CopaTime, ROTULO_STATUS,
   campeaoDaCopa, classificacao, draftTerminou, eliminados, estatisticasDaCopa,
   faseDeGruposCompleta, forcaDoTime, golsDoLado, jogadoresDisponiveis, precisaDePenaltis,
-  rotuloDoTempo, semifinaisResolvidas, temProximoTempo, tempoAtual, tempoDoJogo, timeDaVez,
+  semifinaisResolvidas, temProximoTempo, tempoAtual, tempoDoJogo, timeDaVez,
   totalDeTempos, vencedorDoJogo,
 } from "@/lib/copa";
 import {
@@ -506,12 +506,17 @@ function JogoCopa({
   const B: CopaTime | null = timePorId(jogo.b);
   const ga = golsDoLado(jogo, "a"), gb = golsDoLado(jogo, "b");
   const aberto = jogoAberto === jogo.id;
-  /* duracaoSeg é a duração de CADA tempo; jogo antigo tem um tempo só */
-  const duracao = jogo.duracaoSeg || (cfg.copa_duracao_min || 6) * 60;
+  /* duracaoSeg é a duração de CADA tempo. Jogo que ainda não começou mostra a
+     regra atual da Copa — é a que ele vai receber ao ser iniciado. */
+  const naoComecou = jogo.status === "pendente";
+  const duracao = naoComecou
+    ? (cfg.copa_duracao_min || 6) * 60
+    : jogo.duracaoSeg || (cfg.copa_duracao_min || 6) * 60;
+  const qtdTempos = naoComecou ? Math.max(1, cfg.copa_tempos || 1) : totalDeTempos(jogo);
   const restante = duracao - tempoDoJogo(jogo, agora);
   const acabou = restante <= 0;
-  const doisTempos = totalDeTempos(jogo) > 1;
-  const faltaTempo = temProximoTempo(jogo);
+  const doisTempos = qtdTempos > 1;
+  const faltaTempo = tempoAtual(jogo) < qtdTempos;
   const vencedor = vencedorDoJogo(jogo);
   const pendentePenaltis = precisaDePenaltis(jogo) && !vencedor;
   const [penA, setPenA] = useState("");
@@ -555,7 +560,7 @@ function JogoCopa({
               </div>
               <span className="note">
                 de {formatarRelogio(duracao)}
-                {doisTempos ? ` · ${rotuloDoTempo(jogo)}` : ""}
+                {doisTempos ? ` · ${tempoAtual(jogo)}º tempo` : ""}
               </span>
             </div>
             <div className="lado"><span className="lado-nome">{B?.nome}</span><span className="lado-gols">{gb}</span></div>

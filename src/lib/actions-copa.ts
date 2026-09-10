@@ -264,9 +264,15 @@ async function comJogo(
 }
 
 export async function iniciarJogo(copaId: string, jogoId: string): Promise<Resposta> {
-  return comJogo(copaId, jogoId, (j) => ({
-    ...j, status: "andamento", rodando: true, iniciadoEm: new Date().toISOString(),
-  }));
+  /* Jogo que ainda não começou pega a regra vigente da Copa. Sem isso, uma fase
+     gerada antes de a regra mudar ficaria presa no tempo antigo para sempre. */
+  const regra = await regraDaCopa();
+  return comJogo(copaId, jogoId, (j) => {
+    const novo = j.status === "pendente"
+      ? { ...j, duracaoSeg: regra.duracaoSeg, tempos: regra.tempos, tempo: 1, jogadoSeg: 0, acumuladoSeg: 0 }
+      : j;
+    return { ...novo, status: "andamento" as const, rodando: true, iniciadoEm: new Date().toISOString() };
+  });
 }
 
 export async function pausarJogo(copaId: string, jogoId: string): Promise<Resposta> {
