@@ -26,7 +26,14 @@ export type CopaJogo = {
   b: string;
   eventos: Evento[];
   status: StatusPartida;
+  /** Duração de CADA tempo. Jogo antigo, de tempo único, usa isso como o jogo todo. */
   duracaoSeg: number;
+  /** Quantos tempos o jogo tem. Ausente = 1, que é como os jogos antigos rodavam. */
+  tempos?: number;
+  /** Tempo em que o jogo está agora, começando em 1. */
+  tempo?: number;
+  /** Segundos corridos nos tempos já encerrados — só para o relógio total. */
+  jogadoSeg?: number;
   acumuladoSeg: number;
   rodando: boolean;
   iniciadoEm: string | null;
@@ -107,7 +114,7 @@ export function draftTerminou(copa: Copa): boolean {
    Fase de grupos: todos contra todos pelo método do círculo, para
    ninguém jogar duas vezes seguidas quando dá para evitar.
    --------------------------------------------------------------------- */
-export function gerarFaseDeGrupos(timeIds: string[], duracaoSeg: number): CopaJogo[] {
+export function gerarFaseDeGrupos(timeIds: string[], duracaoSeg: number, tempos = 1): CopaJogo[] {
   const ids = timeIds.slice();
   const impar = ids.length % 2 === 1;
   if (impar) ids.push("__folga__");
@@ -126,20 +133,25 @@ export function gerarFaseDeGrupos(timeIds: string[], duracaoSeg: number): CopaJo
       if (a === "__folga__" || b === "__folga__") continue;
       /* alterna o mando para o quadro não ficar sempre com o mesmo à esquerda */
       const [x, y] = r % 2 === 0 ? [a, b] : [b, a];
-      jogos.push(novoJogo("grupo", r + 1, x, y, duracaoSeg));
+      jogos.push(novoJogo("grupo", r + 1, x, y, duracaoSeg, tempos));
     }
     fila.unshift(fila.pop() as string);
   }
   return jogos;
 }
 
-export function novoJogo(fase: CopaFase, rodada: number, a: string, b: string, duracaoSeg: number): CopaJogo {
+export function novoJogo(
+  fase: CopaFase, rodada: number, a: string, b: string, duracaoSeg: number, tempos = 1
+): CopaJogo {
   return {
     id: idCurto("j_"),
     fase, rodada, a, b,
     eventos: [],
     status: "pendente",
     duracaoSeg,
+    tempos: Math.max(1, tempos),
+    tempo: 1,
+    jogadoSeg: 0,
     acumuladoSeg: 0,
     rodando: false,
     iniciadoEm: null,
@@ -207,14 +219,14 @@ export function precisaDePenaltis(j: CopaJogo): boolean {
 /* ---------------------------------------------------------------------
    Mata-mata: 1º x 4º e 2º x 3º; o 5º está eliminado.
    --------------------------------------------------------------------- */
-export function gerarSemifinais(copa: Copa, duracaoSeg: number): { jogos: CopaJogo[]; eliminado: string | null } {
+export function gerarSemifinais(copa: Copa, duracaoSeg: number, tempos = 1): { jogos: CopaJogo[]; eliminado: string | null } {
   const tab = classificacao(copa);
   if (tab.length < 4) return { jogos: [], eliminado: null };
   const eliminado = tab.length >= 5 ? tab[tab.length - 1].id : null;
   return {
     jogos: [
-      novoJogo("semi", 1, tab[0].id, tab[3].id, duracaoSeg),
-      novoJogo("semi", 1, tab[1].id, tab[2].id, duracaoSeg),
+      novoJogo("semi", 1, tab[0].id, tab[3].id, duracaoSeg, tempos),
+      novoJogo("semi", 1, tab[1].id, tab[2].id, duracaoSeg, tempos),
     ],
     eliminado,
   };
@@ -225,13 +237,13 @@ export function semifinaisResolvidas(copa: Copa): boolean {
   return semis.length === 2 && semis.every((j) => !!vencedorDoJogo(j));
 }
 
-export function gerarFinal(copa: Copa, duracaoSeg: number): CopaJogo | null {
+export function gerarFinal(copa: Copa, duracaoSeg: number, tempos = 1): CopaJogo | null {
   const semis = (copa.jogos || []).filter((j) => j.fase === "semi");
   if (semis.length !== 2) return null;
   const a = vencedorDoJogo(semis[0]);
   const b = vencedorDoJogo(semis[1]);
   if (!a || !b) return null;
-  return novoJogo("final", 1, a, b, duracaoSeg);
+  return novoJogo("final", 1, a, b, duracaoSeg, tempos);
 }
 
 export function campeaoDaCopa(copa: Copa): string | null {
@@ -402,6 +414,42 @@ export function campanhaNaCopa(
     assist: edicoes.reduce((s, e) => s + e.assist, 0),
     jogos: edicoes.reduce((s, e) => s + e.jogos, 0),
   };
+}
+
+/* ---------------------------------------------------------------------
+   Dois tempos (a Copa joga 2 × 6 min).
+   `duracaoSeg` é a duração de CADA tempo; `tempo` é o que está rolando.
+   Jogo antigo não tem esses campos e cai no caso de tempo único.
+   --------------------------------------------------------------------- */
+export const totalDeTempos = (j: Pick<CopaJogo, "tempos">) => Math.max(1, j.tempos || 1);
+export const tempoAtual = (j: Pick<CopaJogo, "tempo">) => Math.max(1, j.tempo || 1);
+
+export function rotuloDoTempo(j: Pick<CopaJogo, "tempo" | "tempos">): string {
+  if (totalDeTempos(j) < 2) return "";
+  return `${tempoAtual(j)}º tempo`;
+}
+
+/** Ainda falta tempo para jogar depois deste. */
+export function temProximoTempo(j: Pick<CopaJogo, "tempo" | "tempos">): boolean {
+  return tempoAtual(j) < totalDeTempos(j);
+}
+
+/** Segundos corridos no jogo inteiro — é o que os lances guardam. */
+export function segundoDoJogo(j: CopaJogo, agoraMs: number): number {
+  return (j.jogadoSeg || 0) + tempoDoJogo(j, agoraMs);
+}
+
+/** Duração do jogo somando todos os tempos. */
+export function duracaoTotal(j: Pick<CopaJogo, "duracaoSeg" | "tempos">): number {
+  return (j.duracaoSeg || 0) * totalDeTempos(j);
+}
+
+/** Texto curto da regra da Copa, para mostrar na tela. */
+export function textoRegraCopa(tempos: number, duracaoMin: number): string {
+  const t = Math.max(1, tempos);
+  const m = `${duracaoMin} ${duracaoMin === 1 ? "minuto" : "minutos"}`;
+  if (t < 2) return m;
+  return `${t} tempos de ${m}`;
 }
 
 export function tempoDoJogo(j: CopaJogo, agoraMs: number): number {

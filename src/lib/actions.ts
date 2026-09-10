@@ -532,6 +532,8 @@ export async function salvarConfig(form: Record<string, any>): Promise<Resposta>
     regra_partida: textoRegra({ duracao_min, gols_limite }),
     nome_pelada: String(form.nome_pelada || cfg.nome_pelada),
     admin_pin: String(form.admin_pin || cfg.admin_pin).trim() || cfg.admin_pin,
+    copa_tempos: Math.max(1, Math.min(4, n(form.copa_tempos, cfg.copa_tempos || 2))),
+    copa_duracao_min: Math.max(1, n(form.copa_duracao_min, cfg.copa_duracao_min || 6)),
   };
   const { error } = await db().from("config").update(patch).eq("id", 1);
   if (error) return erro(error.message);

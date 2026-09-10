@@ -17,6 +17,8 @@ export default function Ajustes({ cfg }: { cfg: Config }) {
     qtd_times: cfg.qtd_times,
     duracao_min: cfg.duracao_min,
     gols_limite: cfg.gols_limite,
+    copa_tempos: cfg.copa_tempos ?? 2,
+    copa_duracao_min: cfg.copa_duracao_min ?? 6,
     nome_pelada: cfg.nome_pelada,
     admin_pin: cfg.admin_pin,
     ...Object.fromEntries((cfg.faixas || []).map((x, i) => ["faixa" + i, x.preco])),
@@ -89,6 +91,21 @@ export default function Ajustes({ cfg }: { cfg: Config }) {
             O cronômetro de cada confronto começa em {f.duracao_min || 0} minutos. Ao bater o tempo ou{" "}
             {f.gols_limite || 0} gols, o site avisa — quem encerra a partida é você.
             Coloque 0 no limite de gols para valer só o tempo.
+          </p>
+        </div>
+
+        <div className="card pad stack">
+          <div className="sect-title">A partida da Copa Fofo</div>
+          <div className="grid2">
+            <Num k="copa_tempos" label="Tempos por jogo" />
+            <Num k="copa_duracao_min" label="Minutos por tempo" />
+          </div>
+          <p className="note">
+            A Copa tem regra própria: {f.copa_tempos || 1}{" "}
+            {Number(f.copa_tempos) === 1 ? "tempo" : "tempos"} de {f.copa_duracao_min || 0}{" "}
+            {Number(f.copa_duracao_min) === 1 ? "minuto" : "minutos"}, sem limite de gols.
+            Vale para os jogos gerados daqui em diante — os que já existem seguem
+            com o tempo que tinham quando foram criados.
           </p>
         </div>
 

@@ -37,6 +37,8 @@ export const CONFIG_PADRAO: Config = {
   duracao_min: 7,
   gols_limite: 2,
   valor_avulso: 12,
+  copa_tempos: 2,
+  copa_duracao_min: 6,
 };
 
 export async function lerConfig(): Promise<Config> {

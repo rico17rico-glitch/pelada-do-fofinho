@@ -8,13 +8,14 @@ import {
   Copa as TipoCopa, CopaJogo, CopaTime, ROTULO_STATUS,
   campeaoDaCopa, classificacao, draftTerminou, eliminados, estatisticasDaCopa,
   faseDeGruposCompleta, forcaDoTime, golsDoLado, jogadoresDisponiveis, precisaDePenaltis,
-  semifinaisResolvidas, tempoDoJogo, timeDaVez, vencedorDoJogo,
+  rotuloDoTempo, semifinaisResolvidas, temProximoTempo, tempoAtual, tempoDoJogo, timeDaVez,
+  totalDeTempos, vencedorDoJogo,
 } from "@/lib/copa";
 import {
   abrirDraft, alternarParticipante, desfazerEscolha, encerrarCopa, encerrarJogo,
   escolherNoDraft, gerarJogoFinal, iniciarFaseDeGrupos, iniciarJogo, pausarJogo,
   reabrirJogo, registrarLanceCopa, registrarPenaltis, removerLanceCopa, renomearTimeCopa,
-  sortearMataMata, zerarJogo, excluirCopa,
+  sortearMataMata, zerarJogo, excluirCopa, virarTempo,
 } from "@/lib/actions-copa";
 import { Avatar, Confirmar, Modal, Swatch, Toast, useToast } from "@/components/ui";
 import Chaveamento from "./Chaveamento";
@@ -505,16 +506,19 @@ function JogoCopa({
   const B: CopaTime | null = timePorId(jogo.b);
   const ga = golsDoLado(jogo, "a"), gb = golsDoLado(jogo, "b");
   const aberto = jogoAberto === jogo.id;
-  const duracao = jogo.duracaoSeg || (cfg.duracao_min || 7) * 60;
+  /* duracaoSeg é a duração de CADA tempo; jogo antigo tem um tempo só */
+  const duracao = jogo.duracaoSeg || (cfg.copa_duracao_min || 6) * 60;
   const restante = duracao - tempoDoJogo(jogo, agora);
   const acabou = restante <= 0;
-  const bateuGols = !!cfg.gols_limite && Math.max(ga, gb) >= cfg.gols_limite && jogo.fase === "grupo";
+  const doisTempos = totalDeTempos(jogo) > 1;
+  const faltaTempo = temProximoTempo(jogo);
   const vencedor = vencedorDoJogo(jogo);
   const pendentePenaltis = precisaDePenaltis(jogo) && !vencedor;
   const [penA, setPenA] = useState("");
   const [penB, setPenB] = useState("");
 
-  const rotulo = jogo.status === "andamento" ? (jogo.rodando ? "Ao vivo" : "Pausado")
+  const rotulo = jogo.status === "andamento"
+    ? (jogo.rodando ? "Ao vivo" : "Pausado") + (doisTempos ? ` · ${tempoAtual(jogo)}º` : "")
     : jogo.status === "pendente" ? "A começar" : "Encerrado";
   const classe = jogo.status === "andamento" ? (jogo.rodando ? "bad" : "warn")
     : jogo.status === "pendente" ? "mute" : pendentePenaltis ? "warn" : "ok";
@@ -549,13 +553,20 @@ function JogoCopa({
               <div className={"relogio" + (acabou ? " estourado" : jogo.rodando ? " correndo" : "")}>
                 {formatarRelogio(Math.max(0, restante))}
               </div>
-              <span className="note">de {formatarRelogio(duracao)}</span>
+              <span className="note">
+                de {formatarRelogio(duracao)}
+                {doisTempos ? ` · ${rotuloDoTempo(jogo)}` : ""}
+              </span>
             </div>
             <div className="lado"><span className="lado-nome">{B?.nome}</span><span className="lado-gols">{gb}</span></div>
           </div>
 
-          {(acabou || bateuGols) && jogo.status === "andamento" ? (
-            <div className="aviso">{acabou ? "Tempo esgotado." : `Limite de ${cfg.gols_limite} gols atingido.`} Encerre quando a jogada terminar.</div>
+          {acabou && jogo.status === "andamento" ? (
+            <div className="aviso">
+              {faltaTempo
+                ? `Fim do ${tempoAtual(jogo)}º tempo. Vire quando a jogada terminar.`
+                : "Tempo esgotado. Encerre quando a jogada terminar."}
+            </div>
           ) : null}
 
           {pendentePenaltis ? (
@@ -578,8 +589,19 @@ function JogoCopa({
                   <button className="btn ghost" disabled={pendente} onClick={() => rodar(() => zerarJogo(copa.id, jogo.id), "Cronômetro zerado.")}>Zerar tempo</button>
                 </>
               ) : null}
+              {jogo.status === "andamento" && faltaTempo ? (
+                <button
+                  className="btn primary"
+                  disabled={pendente}
+                  onClick={() => rodar(() => virarTempo(copa.id, jogo.id))}
+                >
+                  Encerrar {tempoAtual(jogo)}º tempo
+                </button>
+              ) : null}
               {jogo.status === "andamento" ? (
-                <button className="btn" disabled={pendente} onClick={() => rodar(() => encerrarJogo(copa.id, jogo.id), "Jogo encerrado.")}>Encerrar</button>
+                <button className="btn" disabled={pendente} onClick={() => rodar(() => encerrarJogo(copa.id, jogo.id), "Jogo encerrado.")}>
+                  {faltaTempo ? "Encerrar jogo" : "Encerrar"}
+                </button>
               ) : null}
               {jogo.status === "encerrada" ? (
                 <button className="btn sm ghost" disabled={pendente} onClick={() => rodar(() => reabrirJogo(copa.id, jogo.id))}>Reabrir</button>

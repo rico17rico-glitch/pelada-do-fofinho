@@ -46,6 +46,9 @@ export type Config = {
   gols_limite: number;
   /** Quanto cada avulso paga por dia de pelada. */
   valor_avulso: number;
+  /** Copa Fofo tem regra própria: 2 tempos de 6 minutos. */
+  copa_tempos: number;
+  copa_duracao_min: number;
 };
 
 /** Texto curto da regra, montado a partir dos números. */

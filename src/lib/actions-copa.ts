@@ -6,7 +6,8 @@ import { ehAdmin, lerSessao } from "./session";
 import { Evento, Player, decorridoSeg, idCurto } from "./domain";
 import {
   CORES_COPA, Copa, CopaJogo, campeaoDaCopa, draftTerminou, gerarFaseDeGrupos,
-  gerarFinal, gerarSemifinais, jogadoresDisponiveis, semifinaisResolvidas, timeDaVez,
+  gerarFinal, gerarSemifinais, jogadoresDisponiveis, semifinaisResolvidas,
+  temProximoTempo, tempoAtual, timeDaVez,
 } from "./copa";
 
 type Resposta = { ok: boolean; erro?: string; msg?: string; id?: string };
@@ -46,9 +47,13 @@ async function salvar(id: string, patch: Partial<Copa>): Promise<Resposta> {
   return { ok: true };
 }
 
-async function duracaoPadrao(): Promise<number> {
+/** Duração de cada tempo e quantos tempos os jogos da Copa têm. */
+async function regraDaCopa(): Promise<{ duracaoSeg: number; tempos: number }> {
   const cfg = await lerConfig();
-  return Math.max(30, (cfg.duracao_min || 7) * 60);
+  return {
+    duracaoSeg: Math.max(30, (cfg.copa_duracao_min || 6) * 60),
+    tempos: Math.max(1, Math.min(4, cfg.copa_tempos || 2)),
+  };
 }
 
 /* =====================================================================
@@ -230,7 +235,8 @@ export async function iniciarFaseDeGrupos(copaId: string): Promise<Resposta> {
   if (c.status !== "draft") return erro("Abra o draft antes.");
   if (!draftTerminou(c)) return erro("Ainda tem gente para escolher no draft.");
 
-  const jogos = gerarFaseDeGrupos((c.times || []).map((t) => t.id), await duracaoPadrao());
+  const regra = await regraDaCopa();
+  const jogos = gerarFaseDeGrupos((c.times || []).map((t) => t.id), regra.duracaoSeg, regra.tempos);
   return salvar(copaId, { status: "grupos", jogos });
 }
 
@@ -273,6 +279,27 @@ export async function zerarJogo(copaId: string, jogoId: string): Promise<Respost
   return comJogo(copaId, jogoId, (j) => ({ ...j, rodando: false, acumuladoSeg: 0, iniciadoEm: null }));
 }
 
+/** Fecha o tempo corrente e deixa o próximo pronto para começar. */
+export async function virarTempo(copaId: string, jogoId: string): Promise<Resposta> {
+  const c = await lerCopa(copaId);
+  const j = (c?.jogos || []).find((x) => x.id === jogoId);
+  if (!j) return erro("Jogo não encontrado.");
+  if (!temProximoTempo(j)) return erro("Esse jogo já está no último tempo.");
+
+  const proximo = tempoAtual(j) + 1;
+  const resp = await comJogo(copaId, jogoId, (x) => ({
+    ...x,
+    tempo: proximo,
+    /* o que já rolou fica guardado para o relógio total e para os lances */
+    jogadoSeg: (x.jogadoSeg || 0) + Math.round(tempo(x)),
+    acumuladoSeg: 0,
+    rodando: false,
+    iniciadoEm: null,
+    status: "andamento" as const,
+  }));
+  return resp.ok ? { ok: true, msg: `Fim do ${tempoAtual(j)}º tempo.` } : resp;
+}
+
 export async function encerrarJogo(copaId: string, jogoId: string): Promise<Resposta> {
   return comJogo(copaId, jogoId, (j) => ({
     ...j, status: "encerrada", rodando: false, acumuladoSeg: tempo(j), iniciadoEm: null,
@@ -290,7 +317,7 @@ export async function registrarLanceCopa(
     if (lance.teamId !== j.a && lance.teamId !== j.b) return { erro: "Time fora deste jogo." };
     const evento: Evento = {
       id: idCurto("e_"), t: lance.t, teamId: lance.teamId,
-      playerId: lance.playerId, seg: Math.round(tempo(j)),
+      playerId: lance.playerId, seg: Math.round((j.jogadoSeg || 0) + tempo(j)),
     };
     return { ...j, eventos: [...(j.eventos || []), evento] };
   });
@@ -331,7 +358,8 @@ export async function sortearMataMata(copaId: string): Promise<Resposta> {
   if (!grupo.length) return erro("Gere a fase de grupos antes.");
   if (grupo.some((j) => j.status !== "encerrada")) return erro("Ainda tem jogo da fase de grupos em aberto.");
 
-  const { jogos: semis } = gerarSemifinais(c, await duracaoPadrao());
+  const regraSemi = await regraDaCopa();
+  const { jogos: semis } = gerarSemifinais(c, regraSemi.duracaoSeg, regraSemi.tempos);
   if (semis.length !== 2) return erro("Não deu para montar as semifinais.");
   return salvar(copaId, { status: "mata_mata", jogos: [...(c.jogos || []), ...semis] });
 }
@@ -344,7 +372,8 @@ export async function gerarJogoFinal(copaId: string): Promise<Resposta> {
   if ((c.jogos || []).some((j) => j.fase === "final")) return erro("A final já foi criada.");
   if (!semifinaisResolvidas(c)) return erro("Resolva as duas semifinais primeiro — inclusive os pênaltis.");
 
-  const final = gerarFinal(c, await duracaoPadrao());
+  const regraFinal = await regraDaCopa();
+  const final = gerarFinal(c, regraFinal.duracaoSeg, regraFinal.tempos);
   if (!final) return erro("Não deu para montar a final.");
   return salvar(copaId, { jogos: [...(c.jogos || []), final] });
 }
