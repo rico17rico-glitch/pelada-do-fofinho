@@ -15,7 +15,7 @@ import {
   abrirDraft, alternarParticipante, desfazerEscolha, encerrarCopa, encerrarJogo,
   escolherNoDraft, gerarJogoFinal, iniciarFaseDeGrupos, iniciarJogo, pausarJogo,
   reabrirJogo, registrarLanceCopa, registrarPenaltis, removerLanceCopa, renomearTimeCopa,
-  sortearMataMata, zerarJogo, excluirCopa, virarTempo,
+  sortearMataMata, zerarJogo, excluirCopa, virarTempo, substituirNaCopa,
 } from "@/lib/actions-copa";
 import { Avatar, Confirmar, Modal, Swatch, Toast, useToast } from "@/components/ui";
 import Chaveamento from "./Chaveamento";
@@ -34,6 +34,9 @@ export default function Copa({
   const [nomeNovo, setNomeNovo] = useState("");
   const [confirmando, setConfirmando] = useState<null | "encerrar" | "excluir">(null);
   const [jogoAberto, setJogoAberto] = useState<string | null>(null);
+  /* substituição de jogador numa edição que já começou */
+  const [trocando, setTrocando] = useState<{ timeId: string; saiId: string } | null>(null);
+  const [buscaTroca, setBuscaTroca] = useState("");
 
   const porId = (id: string | null) => jogadores.find((p) => p.id === id) || null;
   const nomeDe = (id: string | null) => porId(id)?.nome || "—";
@@ -66,6 +69,10 @@ export default function Copa({
       return true;
     } finally { setPendente(false); }
   }
+
+  /* trocar jogador só faz sentido depois que os times existem e antes de encerrar */
+  const podeSubstituir =
+    organizador && copa.status !== "encerrada" && copa.status !== "rascunho" && copa.status !== "draft";
 
   const tab = classificacao(copa);
   const fora = eliminados(copa);
@@ -256,6 +263,15 @@ export default function Copa({
                           {nomeDe(id)}
                           <span className="grow" />
                           <span className="note">{ovr(porId(id))}</span>
+                          {podeSubstituir ? (
+                            <button
+                              className="btn-icone"
+                              title={`Substituir ${nomeDe(id)}`}
+                              onClick={() => { setBuscaTroca(""); setTrocando({ timeId: tm.id, saiId: id }); }}
+                            >
+                              ⇄
+                            </button>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -399,6 +415,67 @@ export default function Copa({
           </div>
         ) : null}
       </div>
+
+      {trocando ? (
+        <Modal
+          titulo={`Substituir ${nomeDe(trocando.saiId)}`}
+          onFechar={() => setTrocando(null)}
+          rodape={
+            <>
+              <div className="grow" />
+              <button className="btn ghost" onClick={() => setTrocando(null)}>Cancelar</button>
+            </>
+          }
+        >
+          <p className="note" style={{ marginBottom: 12 }}>
+            Quem entra assume a vaga no {timePorId(trocando.timeId)?.nome}. Gol e assistência
+            já lançados continuam de quem marcou — o placar dos jogos não muda.
+          </p>
+          <label className="field" style={{ marginBottom: 10 }}>
+            <span>Procurar</span>
+            <input
+              value={buscaTroca}
+              onChange={(e) => setBuscaTroca(e.target.value)}
+              placeholder="Nome do jogador"
+              autoFocus
+            />
+          </label>
+          <div className="row">
+            {(() => {
+              const naCopa = new Set((copa.times || []).flatMap((t) => t.jogadores));
+              const livres = jogadores
+                .filter((p) => p.ativo !== false && !naCopa.has(p.id))
+                .filter((p) => p.nome.toLowerCase().includes(buscaTroca.trim().toLowerCase()))
+                .sort((a, b) => a.nome.localeCompare(b.nome));
+              if (!livres.length) {
+                return (
+                  <p className="note">
+                    {buscaTroca.trim()
+                      ? "Ninguém com esse nome está livre."
+                      : "Todo mundo do elenco já está em algum time desta edição."}
+                  </p>
+                );
+              }
+              return livres.map((p) => (
+                <button
+                  key={p.id}
+                  className="chip"
+                  disabled={pendente}
+                  onClick={() => {
+                    const alvo = trocando;
+                    setTrocando(null);
+                    rodar(() => substituirNaCopa(copa.id, alvo.timeId, alvo.saiId, p.id));
+                  }}
+                >
+                  <Avatar nome={p.nome} url={p.foto_url} tam={20} />
+                  {p.nome}
+                  <span className="cnum">{ovr(p)}</span>
+                </button>
+              ));
+            })()}
+          </div>
+        </Modal>
+      ) : null}
 
       {confirmando === "excluir" ? (
         <Confirmar

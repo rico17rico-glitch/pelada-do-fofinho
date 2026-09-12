@@ -187,6 +187,62 @@ export async function renomearTimeCopa(copaId: string, timeId: string, nome: str
 /* =====================================================================
    Draft
    ===================================================================== */
+/* ---------------------------------------------------------------------
+   Substituir jogador num time de uma edição que já começou.
+   Acontece: o cara desiste na véspera e outro entra no lugar.
+   Os gols já marcados continuam de quem marcou — o placar dos jogos
+   disputados não pode mudar por causa de uma troca de elenco.
+   --------------------------------------------------------------------- */
+export async function substituirNaCopa(
+  copaId: string, timeId: string, saiId: string, entraId: string
+): Promise<Resposta> {
+  const negado = await exigirOrganizador();
+  if (negado) return negado;
+  if (saiId === entraId) return erro("Escolha um jogador diferente.");
+
+  const c = await lerCopa(copaId);
+  if (!c) return erro("Edição não encontrada.");
+  if (c.status === "encerrada") return erro("Esta edição já foi encerrada.");
+
+  const time = (c.times || []).find((t) => t.id === timeId);
+  if (!time) return erro("Time não encontrado.");
+  if (!time.jogadores.includes(saiId)) return erro("Esse jogador não está nesse time.");
+
+  const jaNaCopa = (c.times || []).some((t) => t.jogadores.includes(entraId));
+  if (jaNaCopa) return erro("Quem entra já está em um time desta edição.");
+
+  const entra = await lerJogador(entraId);
+  if (!entra) return erro("Jogador não encontrado.");
+  if (entra.ativo === false) return erro("Esse jogador está inativo no elenco da pelada.");
+  const sai = await lerJogador(saiId);
+
+  /* troca na mesma posição da lista, para o time não embaralhar */
+  const times = (c.times || []).map((t) =>
+    t.id !== timeId
+      ? t
+      : {
+          ...t,
+          jogadores: t.jogadores.map((id) => (id === saiId ? entraId : id)),
+          /* quem entra herda a braçadeira se o que saiu era o capitão */
+          capitao: t.capitao === saiId ? entraId : t.capitao,
+        }
+  );
+
+  const elenco = Array.from(
+    new Set([...(c.elenco || []).filter((id) => id !== saiId), entraId])
+  );
+
+  const { error } = await db().from("copas").update({ times, elenco }).eq("id", copaId);
+  if (error) return erro(error.message);
+  atualizarTudo();
+
+  const virouCapitao = time.capitao === saiId;
+  return {
+    ok: true,
+    msg: `${entra.nome} entrou no lugar de ${sai?.nome || "quem saiu"}${virouCapitao ? " e ficou com a braçadeira." : "."}`,
+  };
+}
+
 export async function escolherNoDraft(copaId: string, playerId: string): Promise<Resposta> {
   const c = await lerCopa(copaId);
   if (!c) return erro("Edição não encontrada.");
